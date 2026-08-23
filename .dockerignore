@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+tests/
+.env
+*.db
+*.sqlite*
+.claude/
+CLAUDE.md

@@ -43,6 +43,12 @@ android {
     }
 }
 
+// Export the Room schema to android/app/schemas/ so migrations can be authored
+// once the schema starts changing. The directory is committed.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // jvmTarget is not set explicitly: with AGP built-in Kotlin it defaults to
 // android.compileOptions.targetCompatibility (17 above).
 
@@ -59,13 +65,16 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+
     // Settings storage
     implementation(libs.androidx.datastore.preferences)
 
-    // Networking (talks to the FastAPI backend)
-    implementation(libs.bundles.retrofit)
+    // JSON serialization (used for the Google Drive backup snapshot)
+    implementation(libs.kotlinx.serialization.json)
 
-    // Local cache / offline
+    // Local database — the single source of truth (on-device)
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
 
@@ -85,6 +94,7 @@ dependencies {
 
     // Testing
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

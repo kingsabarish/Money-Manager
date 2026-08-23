@@ -15,3 +15,9 @@ private val dayFormatter: DateTimeFormatter =
 
 /** Formats a calendar day for section headers, e.g. "23 Aug 2026". */
 fun LocalDate.formatAsDay(): String = dayFormatter.format(this)
+
+private val monthFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMMM yyyy")
+
+/** Formats a month for the stats header, e.g. "August 2026". */
+fun LocalDate.formatAsMonth(): String = monthFormatter.format(this)

@@ -64,6 +64,43 @@ data class StatsUiState(
     val isEmpty: Boolean get() = !loading && slices.isEmpty()
 }
 
+/** One (sub)category's share of a single top-level category's spending. */
+data class SubcategorySlice(
+    val categoryId: Long,
+    val name: String,
+    val amount: BigDecimal,
+    /** Share of the top-level category's total in the period, 0f..1f. */
+    val fraction: Float,
+)
+
+/** A single transaction inside the drilled-into category's listing. */
+data class DetailTransactionRow(
+    val id: Long,
+    val date: LocalDate,
+    val categoryName: String,
+    val note: String?,
+    val amount: BigDecimal,
+)
+
+/**
+ * The category drill-down: everything spent under one top-level category in the
+ * selected period, broken down by its subcategories and listed transaction by
+ * transaction. Tracks the same period as the chart, so month navigation works
+ * here too.
+ */
+data class CategoryDetailUiState(
+    val categoryId: Long,
+    val categoryName: String,
+    val isMonth: Boolean,
+    val start: LocalDate,
+    val end: LocalDate,
+    val total: BigDecimal,
+    val breakdown: List<SubcategorySlice>,
+    val transactions: List<DetailTransactionRow>,
+) {
+    val isEmpty: Boolean get() = transactions.isEmpty()
+}
+
 /**
  * Aggregates expenses into per-top-level-category spending for a selected period
  * (this month by default). Subcategory spending rolls up into its parent so the
@@ -78,6 +115,9 @@ class StatsViewModel
     ) : ViewModel() {
         private val period = MutableStateFlow<StatsPeriod>(StatsPeriod.Month(YearMonth.now()))
 
+        /** The top-level category the user drilled into, or null for the chart view. */
+        private val selectedCategoryId = MutableStateFlow<Long?>(null)
+
         val uiState: StateFlow<StatsUiState> =
             combine(
                 transactionRepository.observeAll(),
@@ -90,6 +130,31 @@ class StatsViewModel
                 started = SharingStarted.WhileSubscribed(5_000),
                 initialValue = StatsUiState(),
             )
+
+        /** Non-null while a category is drilled into; drives the detail screen. */
+        val detail: StateFlow<CategoryDetailUiState?> =
+            combine(
+                transactionRepository.observeAll(),
+                categoryRepository.observeAll(),
+                period,
+                selectedCategoryId,
+            ) { transactions, categories, selected, categoryId ->
+                categoryId?.let { buildDetail(transactions, categories, selected, it) }
+            }.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = null,
+            )
+
+        /** Drill into a top-level category's transaction listing. */
+        fun selectCategory(categoryId: Long) {
+            selectedCategoryId.value = categoryId
+        }
+
+        /** Return from the drill-down to the chart. */
+        fun clearSelection() {
+            selectedCategoryId.value = null
+        }
 
         /** Step to the previous month; a custom range snaps to its start month first. */
         fun previousMonth() = stepMonth(-1)
@@ -160,6 +225,71 @@ class StatsViewModel
                 end = end,
                 total = total,
                 slices = slices,
+            )
+        }
+
+        private fun buildDetail(
+            transactions: List<Transaction>,
+            categories: List<Category>,
+            selected: StatsPeriod,
+            categoryId: Long,
+        ): CategoryDetailUiState? {
+            val start = selected.rangeStart
+            val end = selected.rangeEnd
+            val topLevelOf = categories.associate { it.id to (it.parentId ?: it.id) }
+            val nameOf = categories.associate { it.id to it.name }
+            // The category may have been deleted since it was tapped.
+            val categoryName = nameOf[categoryId] ?: return null
+
+            // Every transaction in range whose top-level ancestor is this category.
+            val family =
+                transactions.filter {
+                    !it.date.isBefore(start) &&
+                        !it.date.isAfter(end) &&
+                        (topLevelOf[it.categoryId] ?: it.categoryId) == categoryId
+                }
+            val total = family.fold(BigDecimal.ZERO) { acc, t -> acc + t.amount }
+
+            val breakdown =
+                if (total.signum() == 0) {
+                    emptyList()
+                } else {
+                    family
+                        .groupBy { it.categoryId }
+                        .map { (subId, group) ->
+                            val amount = group.fold(BigDecimal.ZERO) { acc, t -> acc + t.amount }
+                            SubcategorySlice(
+                                categoryId = subId,
+                                name = nameOf[subId] ?: "Unknown",
+                                amount = amount,
+                                fraction = amount.divide(total, 6, RoundingMode.HALF_UP).toFloat(),
+                            )
+                        }
+                        .sortedByDescending { it.amount }
+                }
+
+            val rows =
+                family
+                    .sortedWith(compareByDescending<Transaction> { it.date }.thenByDescending { it.id })
+                    .map {
+                        DetailTransactionRow(
+                            id = it.id,
+                            date = it.date,
+                            categoryName = nameOf[it.categoryId] ?: "Unknown",
+                            note = it.note,
+                            amount = it.amount,
+                        )
+                    }
+
+            return CategoryDetailUiState(
+                categoryId = categoryId,
+                categoryName = categoryName,
+                isMonth = selected is StatsPeriod.Month,
+                start = start,
+                end = end,
+                total = total,
+                breakdown = breakdown,
+                transactions = rows,
             )
         }
     }

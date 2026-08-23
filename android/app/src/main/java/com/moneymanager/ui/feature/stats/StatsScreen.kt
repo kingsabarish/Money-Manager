@@ -1,9 +1,12 @@
 package com.moneymanager.ui.feature.stats
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,12 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -57,18 +63,35 @@ private fun paletteColor(index: Int): Color = ChartPalette[index % ChartPalette.
 /**
  * Spending-by-category chart. Defaults to the current month, with prev/next
  * month navigation and a custom date-range picker. Subcategory spending is
- * rolled into its top-level category by the view model.
+ * rolled into its top-level category by the view model. Tapping a category opens
+ * a drill-down listing of that category's transactions for the same period.
  */
 @Composable
 fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    StatsScreenContent(
-        state = state,
-        onPreviousMonth = viewModel::previousMonth,
-        onNextMonth = viewModel::nextMonth,
-        onThisMonth = viewModel::thisMonth,
-        onCustomRange = viewModel::setCustomRange,
-    )
+    val detail by viewModel.detail.collectAsStateWithLifecycle()
+
+    val currentDetail = detail
+    if (currentDetail != null) {
+        BackHandler { viewModel.clearSelection() }
+        CategoryDetailContent(
+            detail = currentDetail,
+            onBack = viewModel::clearSelection,
+            onPreviousMonth = viewModel::previousMonth,
+            onNextMonth = viewModel::nextMonth,
+            onThisMonth = viewModel::thisMonth,
+            onCustomRange = viewModel::setCustomRange,
+        )
+    } else {
+        StatsScreenContent(
+            state = state,
+            onPreviousMonth = viewModel::previousMonth,
+            onNextMonth = viewModel::nextMonth,
+            onThisMonth = viewModel::thisMonth,
+            onCustomRange = viewModel::setCustomRange,
+            onSelectCategory = viewModel::selectCategory,
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,6 +102,7 @@ private fun StatsScreenContent(
     onNextMonth: () -> Unit,
     onThisMonth: () -> Unit,
     onCustomRange: (LocalDate, LocalDate) -> Unit,
+    onSelectCategory: (Long) -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("Stats") }) },
@@ -90,7 +114,9 @@ private fun StatsScreenContent(
                     .padding(innerPadding),
         ) {
             PeriodSelector(
-                state = state,
+                isMonth = state.isMonth,
+                start = state.start,
+                end = state.end,
                 onPreviousMonth = onPreviousMonth,
                 onNextMonth = onNextMonth,
                 onThisMonth = onThisMonth,
@@ -98,26 +124,38 @@ private fun StatsScreenContent(
             )
 
             if (state.isEmpty) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No expenses in this period.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(24.dp),
-                    )
-                }
+                EmptyPeriod()
             } else {
-                ChartAndLegend(state)
+                ChartAndLegend(state, onSelectCategory)
             }
         }
     }
 }
 
+@Composable
+private fun EmptyPeriod() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = "No expenses in this period.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(24.dp),
+        )
+    }
+}
+
+/**
+ * Period controls on a single line — prev/next month, the period label, and the
+ * custom-range (plus "This month" reset when a custom range is active) — so the
+ * chart and details below get as much vertical space as possible.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PeriodSelector(
-    state: StatsUiState,
+    isMonth: Boolean,
+    start: LocalDate,
+    end: LocalDate,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onThisMonth: () -> Unit,
@@ -125,49 +163,32 @@ private fun PeriodSelector(
 ) {
     var showRangePicker by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = onPreviousMonth) { Text("‹") }
-            Text(
-                text = if (state.isMonth) state.start.formatAsMonth() else rangeLabel(state),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            TextButton(onClick = onNextMonth) { Text("›") }
+        TextButton(onClick = onPreviousMonth) { Text("‹") }
+        Text(
+            text = if (isMonth) start.formatAsMonth() else rangeLabel(start, end),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onNextMonth) { Text("›") }
+        if (!isMonth) {
+            TextButton(onClick = onThisMonth) { Text("This month") }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = { showRangePicker = true },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Custom range")
-            }
-            if (!state.isMonth) {
-                OutlinedButton(
-                    onClick = onThisMonth,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text("This month")
-                }
-            }
-        }
+        TextButton(onClick = { showRangePicker = true }) { Text("Range") }
     }
 
     if (showRangePicker) {
         val rangeState =
             rememberDateRangePickerState(
-                initialSelectedStartDateMillis = state.start.toEpochMillisUtc(),
-                initialSelectedEndDateMillis = state.end.toEpochMillisUtc(),
+                initialSelectedStartDateMillis = start.toEpochMillisUtc(),
+                initialSelectedEndDateMillis = end.toEpochMillisUtc(),
             )
         DatePickerDialog(
             onDismissRequest = { showRangePicker = false },
@@ -193,10 +214,10 @@ private fun PeriodSelector(
 }
 
 @Composable
-private fun ChartAndLegend(state: StatsUiState) {
+private fun ChartAndLegend(state: StatsUiState, onSelectCategory: (Long) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "chart") {
@@ -222,17 +243,24 @@ private fun ChartAndLegend(state: StatsUiState) {
                 }
             }
         }
-        items(state.slices, key = { it.categoryId }) { slice ->
-            val index = state.slices.indexOf(slice)
-            LegendRow(slice = slice, color = paletteColor(index))
+        itemsIndexed(state.slices) { index, slice ->
+            LegendRow(
+                slice = slice,
+                color = paletteColor(index),
+                onClick = { onSelectCategory(slice.categoryId) },
+            )
         }
     }
 }
 
 @Composable
-private fun LegendRow(slice: CategorySlice, color: Color) {
+private fun LegendRow(slice: CategorySlice, color: Color, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -261,8 +289,164 @@ private fun LegendRow(slice: CategorySlice, color: Color) {
     }
 }
 
-private fun rangeLabel(state: StatsUiState): String =
-    "${state.start.formatAsDay()} – ${state.end.formatAsDay()}"
+/**
+ * Drill-down: one top-level category's spending for the period — a total, a
+ * subcategory percentage breakdown, and the transaction listing. Month
+ * navigation stays available so the user can scan the category over time.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryDetailContent(
+    detail: CategoryDetailUiState,
+    onBack: () -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onThisMonth: () -> Unit,
+    onCustomRange: (LocalDate, LocalDate) -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(detail.categoryName) },
+                navigationIcon = {
+                    TextButton(onClick = onBack) { Text("‹") }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+        ) {
+            PeriodSelector(
+                isMonth = detail.isMonth,
+                start = detail.start,
+                end = detail.end,
+                onPreviousMonth = onPreviousMonth,
+                onNextMonth = onNextMonth,
+                onThisMonth = onThisMonth,
+                onCustomRange = onCustomRange,
+            )
+
+            if (detail.isEmpty) {
+                EmptyPeriod()
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item(key = "total") {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Total spent",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = detail.total.formatAsCurrency(),
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+
+                    if (detail.breakdown.isNotEmpty()) {
+                        item(key = "breakdown-header") {
+                            SectionHeader("Breakdown")
+                        }
+                        items(detail.breakdown, key = { "b-${it.categoryId}" }) { sub ->
+                            BreakdownRow(sub)
+                        }
+                    }
+
+                    item(key = "txn-header") {
+                        SectionHeader("Transactions")
+                    }
+                    items(detail.transactions, key = { it.id }) { row ->
+                        DetailTransactionItem(row)
+                        HorizontalDivider()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+}
+
+@Composable
+private fun BreakdownRow(sub: SubcategorySlice) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = sub.name,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "${(sub.fraction * 100).toInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = sub.amount.formatAsCurrency(),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+            )
+        }
+        LinearProgressIndicator(
+            progress = { sub.fraction },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun DetailTransactionItem(row: DetailTransactionRow) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = row.categoryName, style = MaterialTheme.typography.bodyLarge)
+            val subtitle = row.note?.let { "${row.date.formatAsDay()} · $it" } ?: row.date.formatAsDay()
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Text(
+            text = row.amount.formatAsCurrency(),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 12.dp),
+        )
+    }
+}
+
+private fun rangeLabel(start: LocalDate, end: LocalDate): String =
+    "${start.formatAsDay()} – ${end.formatAsDay()}"
 
 private fun LocalDate.toEpochMillisUtc(): Long =
     atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
@@ -292,6 +476,42 @@ private fun StatsScreenPreview() {
                         total = BigDecimal("1000.00"),
                         slices = slices,
                     ),
+                onPreviousMonth = {},
+                onNextMonth = {},
+                onThisMonth = {},
+                onCustomRange = { _, _ -> },
+                onSelectCategory = {},
+            )
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun CategoryDetailPreview() {
+    MoneyManagerTheme {
+        Surface {
+            CategoryDetailContent(
+                detail =
+                    CategoryDetailUiState(
+                        categoryId = 1,
+                        categoryName = "Food",
+                        isMonth = true,
+                        start = LocalDate.of(2026, 8, 1),
+                        end = LocalDate.of(2026, 8, 31),
+                        total = BigDecimal("420.00"),
+                        breakdown =
+                            listOf(
+                                SubcategorySlice(10, "Groceries", BigDecimal("300.00"), 0.71f),
+                                SubcategorySlice(11, "Dining", BigDecimal("120.00"), 0.29f),
+                            ),
+                        transactions =
+                            listOf(
+                                DetailTransactionRow(1, LocalDate.of(2026, 8, 20), "Groceries", "Weekly shop", BigDecimal("80.00")),
+                                DetailTransactionRow(2, LocalDate.of(2026, 8, 18), "Dining", null, BigDecimal("40.00")),
+                            ),
+                    ),
+                onBack = {},
                 onPreviousMonth = {},
                 onNextMonth = {},
                 onThisMonth = {},

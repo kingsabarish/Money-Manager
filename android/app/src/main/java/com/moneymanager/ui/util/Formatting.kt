@@ -3,6 +3,7 @@ package com.moneymanager.ui.util
 import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
@@ -21,3 +22,6 @@ private val monthFormatter: DateTimeFormatter =
 
 /** Formats a month for the stats header, e.g. "August 2026". */
 fun LocalDate.formatAsMonth(): String = monthFormatter.format(this)
+
+/** Formats a month for headers, e.g. "August 2026". */
+fun YearMonth.formatAsMonth(): String = monthFormatter.format(this)

@@ -1,5 +1,6 @@
 package com.moneymanager.ui.feature.transactions
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +42,7 @@ import java.time.LocalDate
 fun HomeScreen(
     onNavigateToSettings: () -> Unit,
     onAddExpense: () -> Unit,
+    onEditExpense: (Long) -> Unit,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -48,6 +50,7 @@ fun HomeScreen(
         state = uiState,
         onNavigateToSettings = onNavigateToSettings,
         onAddExpense = onAddExpense,
+        onEditExpense = onEditExpense,
     )
 }
 
@@ -57,6 +60,7 @@ private fun HomeScreenContent(
     state: HomeUiState,
     onNavigateToSettings: () -> Unit,
     onAddExpense: () -> Unit,
+    onEditExpense: (Long) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -81,21 +85,21 @@ private fun HomeScreenContent(
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.align(Alignment.Center).padding(24.dp),
                     )
-                else -> ExpenseList(state.sections)
+                else -> ExpenseList(state.sections, onEditExpense)
             }
         }
     }
 }
 
 @Composable
-private fun ExpenseList(sections: List<DaySection>) {
+private fun ExpenseList(sections: List<DaySection>, onEditExpense: (Long) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         sections.forEach { section ->
             item(key = "header-${section.date}") {
                 DayHeader(section)
             }
             items(section.rows, key = { it.id }) { row ->
-                ExpenseRow(row)
+                ExpenseRow(row, onClick = { onEditExpense(row.id) })
                 HorizontalDivider()
             }
         }
@@ -125,11 +129,12 @@ private fun DayHeader(section: DaySection) {
 }
 
 @Composable
-private fun ExpenseRow(row: TransactionRow) {
+private fun ExpenseRow(row: TransactionRow, onClick: () -> Unit) {
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
+                .clickable(onClick = onClick)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
@@ -174,6 +179,7 @@ private fun HomeScreenPreview() {
                 state = HomeUiState(loading = false, sections = sample),
                 onNavigateToSettings = {},
                 onAddExpense = {},
+                onEditExpense = {},
             )
         }
     }

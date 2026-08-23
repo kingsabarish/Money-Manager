@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
@@ -69,6 +70,7 @@ fun EntryScreen(
         onCategorySelected = viewModel::onCategorySelected,
         onAccountSelected = viewModel::onAccountSelected,
         onSave = viewModel::save,
+        onDelete = viewModel::delete,
     )
 }
 
@@ -83,11 +85,14 @@ private fun EntryScreenContent(
     onCategorySelected: (Long) -> Unit,
     onAccountSelected: (Long) -> Unit,
     onSave: () -> Unit,
+    onDelete: () -> Unit,
 ) {
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add expense") },
+                title = { Text(if (state.isEditing) "Edit expense" else "Add expense") },
                 navigationIcon = {
                     TextButton(onClick = onNavigateBack) { Text("Cancel") }
                 },
@@ -148,10 +153,37 @@ private fun EntryScreenContent(
                 if (state.saving) {
                     CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                 } else {
-                    Text("Save")
+                    Text(if (state.isEditing) "Save changes" else "Save")
+                }
+            }
+
+            if (state.isEditing) {
+                OutlinedButton(
+                    onClick = { showDeleteConfirm = true },
+                    enabled = !state.saving,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Delete expense", color = MaterialTheme.colorScheme.error)
                 }
             }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete expense") },
+            text = { Text("This expense will be permanently removed.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    onDelete()
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 

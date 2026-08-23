@@ -1,7 +1,9 @@
 package com.moneymanager.ui.feature.entry
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.navigation.toRoute
 import com.moneymanager.domain.model.Account
 import com.moneymanager.domain.model.AppError
 import com.moneymanager.domain.model.AppResult
@@ -9,6 +11,7 @@ import com.moneymanager.domain.model.Category
 import com.moneymanager.domain.repository.AccountRepository
 import com.moneymanager.domain.repository.CategoryRepository
 import com.moneymanager.domain.repository.TransactionRepository
+import com.moneymanager.ui.navigation.Entry
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +33,7 @@ data class EntryUiState(
     val saving: Boolean = false,
     val errorMessage: String? = null,
     val saved: Boolean = false,
+    val isEditing: Boolean = false,
 ) {
     val selectedCategory: Category? get() = categories.firstOrNull { it.id == selectedCategoryId }
     val selectedAccount: Account? get() = accounts.firstOrNull { it.id == selectedAccountId }
@@ -42,14 +46,35 @@ data class EntryUiState(
 class EntryViewModel
     @Inject
     constructor(
+        savedStateHandle: SavedStateHandle,
         private val transactionRepository: TransactionRepository,
         categoryRepository: CategoryRepository,
         accountRepository: AccountRepository,
     ) : ViewModel() {
-        private val _uiState = MutableStateFlow(EntryUiState())
+        /** Non-null when editing an existing expense (from the Entry route arg). */
+        private val editingId: Long? = savedStateHandle.toRoute<Entry>().transactionId
+
+        private val _uiState = MutableStateFlow(EntryUiState(isEditing = editingId != null))
         val uiState: StateFlow<EntryUiState> = _uiState.asStateFlow()
 
         init {
+            if (editingId != null) {
+                viewModelScope.launch {
+                    val result = transactionRepository.getById(editingId)
+                    if (result is AppResult.Success) {
+                        val t = result.data
+                        _uiState.update { state ->
+                            state.copy(
+                                amountText = t.amount.toPlainString(),
+                                date = t.date,
+                                note = t.note.orEmpty(),
+                                selectedCategoryId = t.categoryId,
+                                selectedAccountId = t.accountId,
+                            )
+                        }
+                    }
+                }
+            }
             viewModelScope.launch {
                 categoryRepository.observeAll().collect { categories ->
                     _uiState.update { state ->
@@ -107,14 +132,40 @@ class EntryViewModel
             _uiState.update { it.copy(saving = true, errorMessage = null) }
             viewModelScope.launch {
                 val result =
-                    transactionRepository.addExpense(
-                        amount = amount,
-                        date = state.date,
-                        categoryId = categoryId,
-                        accountId = accountId,
-                        note = state.note,
-                    )
+                    if (editingId != null) {
+                        transactionRepository.updateExpense(
+                            id = editingId,
+                            amount = amount,
+                            date = state.date,
+                            categoryId = categoryId,
+                            accountId = accountId,
+                            note = state.note,
+                        )
+                    } else {
+                        transactionRepository.addExpense(
+                            amount = amount,
+                            date = state.date,
+                            categoryId = categoryId,
+                            accountId = accountId,
+                            note = state.note,
+                        )
+                    }
                 when (result) {
+                    is AppResult.Success -> _uiState.update { it.copy(saving = false, saved = true) }
+                    is AppResult.Failure ->
+                        _uiState.update {
+                            it.copy(saving = false, errorMessage = result.error.toMessage())
+                        }
+                }
+            }
+        }
+
+        /** Delete the expense being edited, then signal completion via [EntryUiState.saved]. */
+        fun delete() {
+            val id = editingId ?: return
+            _uiState.update { it.copy(saving = true, errorMessage = null) }
+            viewModelScope.launch {
+                when (val result = transactionRepository.delete(id)) {
                     is AppResult.Success -> _uiState.update { it.copy(saving = false, saved = true) }
                     is AppResult.Failure ->
                         _uiState.update {

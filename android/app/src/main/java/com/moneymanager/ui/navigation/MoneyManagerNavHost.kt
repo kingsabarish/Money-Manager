@@ -20,7 +20,8 @@ fun MoneyManagerNavHost() {
         composable<Home> {
             HomeScreen(
                 onNavigateToSettings = { navController.navigate(Settings) },
-                onAddExpense = { navController.navigate(Entry) },
+                onAddExpense = { navController.navigate(Entry()) },
+                onEditExpense = { id -> navController.navigate(Entry(id)) },
             )
         }
         composable<Entry> {

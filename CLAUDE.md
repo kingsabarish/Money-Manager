@@ -5,15 +5,25 @@ A personal finance / expense-tracking app.
 ## Project overview
 
 - Purpose: track income, expenses, and budgets.
-- Language: Python.
-- Packaging & runtime: runs as a **Docker container**.
-- Deployment target: a **headless Debian home server PC**. Keep everything
-  compatible with headless Linux (no GUI dependencies, no interactive prompts
-  at runtime).
+- Languages: **Python** (backend) and **Kotlin** (Android app).
+- Backend packaging & runtime: runs as a **Docker container**.
+- Backend deployment target: a **headless Debian home server PC**. Keep
+  everything compatible with headless Linux (no GUI dependencies, no interactive
+  prompts at runtime).
+- The Android app talks to the backend over the network (currently reached via
+  Tailscale); the server base URL is user-configurable in the app.
 
-## Architecture & conventions
+## Repository layout (monorepo)
 
-Layout (`src/money_manager/backend/` is the FastAPI app):
+- `backend/` — the Python FastAPI project (its own `pyproject.toml`, `uv.lock`,
+  `Dockerfile`, `docker-compose.yml`, `src/`, `tests/`). Run all `uv` commands
+  from inside `backend/`.
+- `android/` — the native Android app (Kotlin, Jetpack Compose).
+- Root holds only shared files: `CLAUDE.md`, `README.md`, `.gitignore`.
+
+## Backend architecture & conventions
+
+Layout (`backend/src/money_manager/` is the FastAPI app):
 
 - `app.py` — `create_app()` factory; register every router here. `lifespan`
   calls `init_db()` on startup.
@@ -26,9 +36,11 @@ Layout (`src/money_manager/backend/` is the FastAPI app):
 - `models/` — Pydantic request/response schemas. Read models set
   `ConfigDict(from_attributes=True)`.
 - `routes/` — one `APIRouter` per resource.
-- `src/scripts/` — standalone test UI: `test_ui.py` (stdlib proxy server) +
+- `backend/scripts/` — standalone test UI, kept **parallel to `src/`** (it is a
+  test script, not part of the app code): `test_ui.py` (stdlib proxy server) +
   `index.html`. **The backend serves the API only — it never serves HTML.** Run
-  the UI with `uv run python src/scripts/test_ui.py --backend <backend-url>`.
+  the UI with `uv run python scripts/test_ui.py --backend <backend-url>` (from
+  `backend/`).
 - `tests/` — pytest against an in-memory SQLite engine via
   `app.dependency_overrides` (see `conftest.py`).
 
@@ -57,9 +69,10 @@ Persistence:
 ## Python environment
 
 - Use **`uv`** for all Python management (dependencies, virtualenv, running).
+  Run `uv` commands from the `backend/` directory.
 - Install **`ruff`** and **`mypy`** as dev dependencies via `uv`.
-- Full local gate: `uv run ruff check . && uv run ruff format --check . &&
-  uv run mypy && uv run pytest -q`.
+- Full local gate (from `backend/`): `uv run ruff check . && uv run ruff format
+  --check . && uv run mypy && uv run pytest -q`.
 
 ## Code quality (required for every change)
 
@@ -81,6 +94,9 @@ Do not leave ruff or mypy failures behind.
 - **I review every change.** After you make a change, stop and let me review it.
 - **Do NOT commit or push** unless I explicitly tell you to. Only after I say
   "commit" / "push" may you run those git commands.
+- **Modular commits.** When I ask you to commit, do NOT dump everything into one
+  commit. Split the changes into reasonable, logically-grouped commits (e.g.
+  restructure vs. feature vs. docs) each with its own clear message.
 
 ### Branching & PR flow
 

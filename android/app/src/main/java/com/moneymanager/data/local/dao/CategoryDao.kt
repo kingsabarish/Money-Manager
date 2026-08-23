@@ -34,9 +34,15 @@ interface CategoryDao {
     @Insert
     suspend fun insert(entity: CategoryEntity): Long
 
+    @Insert
+    suspend fun insertAll(entities: List<CategoryEntity>)
+
     @Update
     suspend fun update(entity: CategoryEntity)
 
     @Delete
     suspend fun delete(entity: CategoryEntity)
+
+    @Query("DELETE FROM categories")
+    suspend fun deleteAll()
 }

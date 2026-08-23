@@ -62,12 +62,20 @@ class FakeCategoryDao(private val db: InMemoryDb) : CategoryDao {
         return id
     }
 
+    override suspend fun insertAll(entities: List<CategoryEntity>) {
+        db.categories.value = db.categories.value + entities
+    }
+
     override suspend fun update(entity: CategoryEntity) {
         db.categories.value = db.categories.value.map { if (it.id == entity.id) entity else it }
     }
 
     override suspend fun delete(entity: CategoryEntity) {
         db.categories.value = db.categories.value.filterNot { it.id == entity.id }
+    }
+
+    override suspend fun deleteAll() {
+        db.categories.value = emptyList()
     }
 }
 
@@ -98,12 +106,20 @@ class FakeAccountDao(private val db: InMemoryDb) : AccountDao {
         return id
     }
 
+    override suspend fun insertAll(entities: List<AccountEntity>) {
+        db.accounts.value = db.accounts.value + entities
+    }
+
     override suspend fun update(entity: AccountEntity) {
         db.accounts.value = db.accounts.value.map { if (it.id == entity.id) entity else it }
     }
 
     override suspend fun delete(entity: AccountEntity) {
         db.accounts.value = db.accounts.value.filterNot { it.id == entity.id }
+    }
+
+    override suspend fun deleteAll() {
+        db.accounts.value = emptyList()
     }
 }
 
@@ -121,7 +137,15 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
         return id
     }
 
+    override suspend fun insertAll(entities: List<TransactionEntity>) {
+        db.transactions.value = db.transactions.value + entities
+    }
+
     override suspend fun delete(entity: TransactionEntity) {
         db.transactions.value = db.transactions.value.filterNot { it.id == entity.id }
+    }
+
+    override suspend fun deleteAll() {
+        db.transactions.value = emptyList()
     }
 }

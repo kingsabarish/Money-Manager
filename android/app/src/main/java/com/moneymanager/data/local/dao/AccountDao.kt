@@ -34,9 +34,15 @@ interface AccountDao {
     @Insert
     suspend fun insert(entity: AccountEntity): Long
 
+    @Insert
+    suspend fun insertAll(entities: List<AccountEntity>)
+
     @Update
     suspend fun update(entity: AccountEntity)
 
     @Delete
     suspend fun delete(entity: AccountEntity)
+
+    @Query("DELETE FROM accounts")
+    suspend fun deleteAll()
 }

@@ -8,8 +8,9 @@
 [versions]
 agp = "9.3.0"
 kotlin = "2.4.10"
-# KSP version tracks Kotlin exactly: "<kotlin>-<ksp>". Verify the suffix on first sync.
-ksp = "2.4.10-2.0.2"
+# KSP uses decoupled versioning (own version, not "<kotlin>-<ksp>"). 2.3.x (KSP2)
+# supports a range of Kotlin releases; the Kotlin docs pair 2.4.10 with KSP 2.3.10+.
+ksp = "2.3.11"
 hilt = "2.60.1"
 androidxHilt = "1.2.0"
 
@@ -24,7 +25,7 @@ retrofit = "3.0.0"
 okhttp = "5.0.0"
 kotlinxSerialization = "1.9.0"
 coroutines = "1.10.2"
-glance = "1.2.0"
+glance = "1.1.1"
 workManager = "2.10.1"
 
 junit = "4.13.2"
@@ -101,7 +102,8 @@ room = [
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# No kotlin-android plugin: AGP 9.0+ ships built-in Kotlin support. The `kotlin`
+# version below still drives the Kotlin compiler plugins (compose, serialization).
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

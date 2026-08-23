@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    // No kotlin-android plugin: AGP 9.0+ has built-in Kotlin support. The Kotlin
+    // compiler plugins below (compose, serialization) and KSP still apply on top.
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
@@ -9,12 +10,12 @@ plugins {
 
 android {
     namespace = "com.moneymanager"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.moneymanager"
         minSdk = 26
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
 
@@ -42,9 +43,8 @@ android {
     }
 }
 
-kotlin {
-    jvmToolchain(17)
-}
+// jvmTarget is not set explicitly: with AGP built-in Kotlin it defaults to
+// android.compileOptions.targetCompatibility (17 above).
 
 dependencies {
     // Core / lifecycle

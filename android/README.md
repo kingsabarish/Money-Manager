@@ -1,29 +1,37 @@
 # Money Manager — Android app
 
-Native Android client for the Money Manager backend. Talks to the self-hosted
-FastAPI server over the network (currently reached via Tailscale); the server
-base URL is configurable in the app's settings.
+Native Android app for tracking income, expenses, and budgets. The app is
+**on-device only**: a local **Room** database is the single source of truth and
+it has **no runtime dependency on the backend**. Data durability comes from an
+optional **Google Drive backup** (export/restore of a JSON snapshot).
 
-> **Status:** project structure only — no feature logic yet.
+The `backend/` FastAPI project stays in the monorepo but is **decoupled** from
+the app — kept for a possible future web layer / for reading backups. Its domain
+model is the reference for the on-device schema.
+
+> **Status:** app shell + Material 3 theme + navigation in place; on-device data
+> layer and features landing incrementally.
 
 ## Stack
 
-- **Kotlin** + **Jetpack Compose** (Material 3)
+- **Kotlin** + **Jetpack Compose** (Material 3, dynamic color on API 31+)
 - **Coroutines / Flow** for async
-- **Retrofit + OkHttp + kotlinx.serialization** for the API
-- **Room** for the offline cache, **DataStore** for settings
+- **Room** — the local database, single source of truth
+- **DataStore** for settings
+- **kotlinx.serialization** for the JSON backup snapshot
 - **Hilt** for dependency injection
+- **Navigation Compose** (type-safe routes)
 - **Glance** for the home-screen widget, **App Shortcuts** for quick actions
-- **WorkManager** for background sync
+- **WorkManager** for the background backup
 
 Versions are centralized in [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
 ## Requirements
 
 - **JDK 17+** — 17 is AGP's baseline; a newer JDK works too (this project was
-  set up with **JDK 26**)
-- **Android SDK 36** — Platform 36 + Build-Tools 36 + Platform-Tools (`adb`)
-- Gradle **9.5.0** via the wrapper (AGP **9.3**)
+  set up with **JDK 26**, verified against Gradle 9.5.0)
+- **Android SDK 37** — Platform 37 + Build-Tools 37.0.0 + Platform-Tools (`adb`)
+- Gradle **9.5.0** via the committed wrapper (AGP **9.3.0**, built-in Kotlin)
 - Either **Android Studio** *or* the **command-line tools only** — see
   [Installing the build toolchain](#installing-the-build-toolchain-sdk-only-no-android-studio)
   for the SDK-only setup used here.
@@ -69,12 +77,12 @@ and `%ANDROID_HOME%\platform-tools`. **Open a new terminal** so they load.
 
 ```bash
 sdkmanager --licenses                                             # accept all (y)
-sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+sdkmanager "platform-tools" "platforms;android-37" "build-tools;37.0.0"
 ```
 
 - `platform-tools` provides **`adb`** (needed to talk to the physical device).
-- `platforms;android-36` + `build-tools;36.0.0` match `compileSdk` /
-  `targetSdk 36`.
+- `platforms;android-37` + `build-tools;37.0.0` match `compileSdk` /
+  `targetSdk 37` (Compose BOM `2026.08.00` requires SDK 37).
 
 ### 5. `local.properties`
 
@@ -95,67 +103,56 @@ adb version           # from platform-tools
 
 ## Getting started
 
-Open the `android/` folder in Android Studio, which generates
-`local.properties` (SDK path) and the Gradle wrapper on first sync.
-
-To generate the Gradle wrapper from the command line instead (SDK-only setup):
+The Gradle wrapper is **committed**, so no generation step is needed — clone and
+build. From `android/`:
 
 ```bash
-cd android
-gradle wrapper --gradle-version 9.5.0
+./gradlew assembleDebug
 ```
+
+(If opening in Android Studio instead, it generates `local.properties` on first
+sync.)
 
 ## Running during development
 
 Unlike the backend (Docker in WSL), the Android app builds and runs **natively
-on Windows** (no WSL/Docker) and deploys to a physical phone or an emulator.
+on Windows** (no WSL/Docker) and deploys to a physical phone (recommended) or an
+emulator. No network/server setup is required — the app is fully on-device.
 
-### Two install paths
+### Build & install from the command line
 
-- **SDK-only (used here):** the command-line tools + a JDK, driven from VS Code
-  — see [Installing the build toolchain](#installing-the-build-toolchain-sdk-only-no-android-studio)
-  above. Best if you don't want the IDE; pair it with a physical device.
-- **Android Studio (all-in-one):** its first-run setup downloads everything the
-  build needs — a bundled JDK (JetBrains Runtime 17+), the Android SDK Platform
-  36 + Build-Tools 36, Platform-Tools (`adb`), and the Emulator; Gradle comes
-  from the project wrapper. Add anything the wizard skipped under **SDK Manager**
-  (Settings → Languages & Frameworks → Android SDK).
+From `android/`, with a device connected (`adb devices` lists it):
 
-Either way, the only extra you need is a run target — a physical phone
-(recommended) or an emulator (below).
+```bash
+./gradlew installDebug          # build + install the debug APK
+adb shell monkey -p com.moneymanager 1   # launch it
+```
 
 ### Run on a physical phone (recommended)
 
 Best for testing widgets, quick actions, and battery on real hardware.
 
 1. On the phone: Developer Options → **USB debugging** (cable) or **Wireless
-   debugging** (Android 11+). No PC-side install — `adb` ships with Platform-Tools.
-2. Keep the phone on your **tailnet** (Tailscale app running).
-3. In the app's settings, set the server URL to the server's Tailscale address,
-   e.g. `http://<server-name>:8000` or `http://100.x.y.z:8000`.
-4. Select the phone in the target dropdown and press **▶ Run**.
+   debugging** (Android 11+). Authorize the RSA prompt on first connect.
+2. `./gradlew installDebug` builds, installs, and you launch from the app
+   drawer or via `adb`.
+
+The app needs no network to run. The **Google Drive backup** (in Settings) is
+the only online feature and is optional.
 
 ### Run on the emulator (fast UI iteration)
 
-1. **Device Manager → Create Device** → pick a phone + an **API 36** system
+1. **Device Manager → Create Device** → pick a phone + an **API 37** system
    image (downloads once).
-2. Keep **Tailscale running on Windows** — the emulator reaches the home server
-   through the host's network at the same Tailscale address.
-3. Press **▶ Run**.
-
-> `10.0.2.2` maps to the *Windows host's* localhost, so it is **not** how to
-> reach the backend here (the backend runs on the home server, not your PC). Use
-> the Tailscale address.
+2. Press **▶ Run** (Android Studio) or `./gradlew installDebug` against the
+   running emulator.
 
 ### Inner loop
 
-- **▶ Run / Debug** builds, installs, and launches on the selected target.
-- **Logcat** shows logs.
+- `./gradlew installDebug` (or **▶ Run / Debug** in the IDE) builds, installs,
+  and launches on the selected target.
+- **Logcat** (`adb logcat`) shows logs.
 - Compose **`@Preview` + Live Edit** render UI without a full deploy.
-
-> Android blocks plaintext HTTP by default (API 28+). Reaching the backend over
-> plain `http://` (Tailscale) will need a network security config; that is added
-> in the first networking slice so the connection test works.
 
 ## Project structure
 
@@ -164,22 +161,22 @@ Single Gradle module (`:app`), layered and organized by feature:
 ```text
 app/src/main/java/com/moneymanager/
 ├── data/
-│   ├── remote/        Retrofit service + DTOs (mirror the FastAPI JSON)
 │   ├── local/         Room entities/DAOs + DataStore (settings)
-│   └── repository/    repository implementations (remote + local)
+│   ├── backup/        Google Drive JSON snapshot export/restore
+│   └── repository/    repository implementations (map Room ↔ domain)
 ├── domain/
-│   ├── model/         clean Kotlin domain models
+│   ├── model/         clean Kotlin domain models + AppResult
 │   └── repository/    repository interfaces (UI depends on these)
 ├── ui/
 │   ├── theme/         Material 3 theme
-│   ├── components/     reusable composables
+│   ├── components/    reusable composables
 │   ├── navigation/    Compose navigation graph
 │   └── feature/       one package per screen (screen + ViewModel):
 │       ├── transactions/   expense list (home) + filters
 │       ├── entry/          add / edit expense
 │       ├── categories/     manage categories + subcategories
 │       ├── accounts/       manage accounts + subaccounts
-│       └── settings/       server URL + connection test
+│       └── settings/       backup + preferences
 ├── widget/            Glance home-screen widget(s)
 ├── di/                Hilt modules
 ├── MainActivity.kt    single-activity Compose host
@@ -187,6 +184,8 @@ app/src/main/java/com/moneymanager/
 ```
 
 Empty package directories are held by `.gitkeep` files that describe each
-layer's purpose. Each feature screen depends only on a repository **interface**
-(`domain/repository/`), so data sources can change or be tested without
-touching the UI.
+layer's purpose. The UI depends only on repository **interfaces**
+(`domain/repository/`); `domain/**` has no Android/Room imports, and errors cross
+the boundary as a sealed `AppResult`. Because there is no server to backstop
+them, the two-level category/account depth, duplicate-name, and guarded-delete
+invariants are enforced in the repository layer.

@@ -10,8 +10,10 @@ A personal finance / expense-tracking app.
 - Backend deployment target: a **headless Debian home server PC**. Keep
   everything compatible with headless Linux (no GUI dependencies, no interactive
   prompts at runtime).
-- The Android app talks to the backend over the network (currently reached via
-  Tailscale); the server base URL is user-configurable in the app.
+- The Android app is **on-device only**: a local Room database is the single
+  source of truth, with a **Google Drive backup** for durability. It has **no
+  runtime dependency on the backend**. `backend/` stays in the repo but is
+  **decoupled** (kept for a possible future web layer / reading backups).
 
 ## Repository layout (monorepo)
 
@@ -72,19 +74,34 @@ Layout (`android/` is a single-module Gradle project — the `:app` module):
 
 - Native **Kotlin + Jetpack Compose** (Material 3), organized
   **package-by-feature** under `app/src/main/java/com/moneymanager/`:
-  `data/{remote,local,repository}`, `domain/{model,repository}`,
+  `data/{local,repository,backup}`, `domain/{model,repository}`,
   `ui/{theme,components,navigation,feature/*}`, `widget/`, `di/`. Empty layers
   are held by `.gitkeep` until filled in.
-- The UI depends only on repository **interfaces** in `domain/repository/`;
-  concrete implementations live in `data/repository/`.
-- Stack: Retrofit + OkHttp + kotlinx.serialization (API), Room (offline cache),
-  DataStore (settings), Hilt (DI), Glance (widget), WorkManager (sync).
+- **On-device architecture:** Room is the single source of truth (no backend at
+  runtime). The UI depends only on repository **interfaces** in
+  `domain/repository/`; implementations in `data/repository/` map Room entities ↔
+  domain models. `domain/**` has no Android/Room imports; `ui/**` never imports
+  `data/**`. Errors cross the boundary as a sealed `AppResult`, not exceptions.
+  The two-level depth / duplicate-name / guarded-delete invariants (mirrored from
+  the backend domain) are enforced in the repository layer, since there is no
+  server to backstop them.
+- Stack: Room (local DB = source of truth), DataStore (settings), Hilt (DI),
+  Navigation Compose (type-safe routes), kotlinx.serialization (JSON backup
+  snapshot), Glance (widget), WorkManager (background backup). Backup target is
+  Google Drive **appDataFolder**; Retrofit/OkHttp are available and may be used
+  for the Drive REST API.
 - Versions are centralized in `android/gradle/libs.versions.toml`. Pins: AGP
-  **9.3**, Gradle **9.5.0**, Kotlin **2.4.10**, compileSdk/targetSdk **36**,
-  minSdk **26**, JVM target **17**.
-- Android blocks cleartext HTTP by default (API 28+). Reaching the backend over
-  plain `http://` (Tailscale) needs a network security config — added in the
-  first networking slice.
+  **9.3.0**, Gradle **9.5.0**, Kotlin **2.4.10**, KSP **2.3.11** (KSP uses
+  *decoupled* versioning — not `<kotlin>-<ksp>`), Glance **1.1.1**,
+  compileSdk/targetSdk **37**, minSdk **26**, JVM target **17**.
+- AGP 9 provides **built-in Kotlin**: do **not** apply the
+  `org.jetbrains.kotlin.android` plugin (it errors). The compose, serialization,
+  and KSP plugins still apply on top; Kotlin compiler options go in the
+  `kotlin { compilerOptions { } }` DSL (jvmTarget defaults to
+  `compileOptions.targetCompatibility`).
+- Config cache is temporarily **off** (`org.gradle.configuration-cache=false`):
+  AGP 9.3's `ProcessNavigationXmlTask` fails to serialize into it. Re-enable once
+  on an AGP version that fixes it.
 
 ## Python environment
 
@@ -102,13 +119,17 @@ Layout (`android/` is a single-module Gradle project — the `:app` module):
   `android/README.md`.
 - Toolchain on the dev PC: a **JDK** (via `JAVA_HOME`) and the **Android SDK**
   at `C:\Android\Sdk` (via `ANDROID_HOME` / `ANDROID_SDK_ROOT`), with
-  `cmdline-tools\latest\bin` and `platform-tools` on `PATH`.
+  `cmdline-tools\latest\bin` and `platform-tools` on `PATH`. Installed SDK
+  packages include **platforms;android-37** and **build-tools;37.0.0** (Compose
+  BOM `2026.08.00` pulls Compose 1.12 and requires compileSdk 37).
 - The build's JVM **target** is 17 (AGP 9.3 baseline); the JDK that *runs*
-  Gradle may be newer (this machine uses JDK 26).
+  Gradle may be newer (this machine uses JDK 26 — verified working with Gradle
+  9.5.0).
 - `android/local.properties` (holds `sdk.dir`) is **machine-local and
   gitignored** — never commit it. Every other `android/` config is committed.
-- Gradle runs via the wrapper (`./gradlew` from `android/`), generated once
-  with `gradle wrapper`.
+- Gradle runs via the wrapper (`./gradlew` from `android/`). The wrapper files
+  (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` +
+  `.properties`) are **committed** — clone and run, no `gradle wrapper` step.
 
 ## Code quality (required for every change)
 

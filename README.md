@@ -1,16 +1,15 @@
 # Money Manager
 
-A self-hosted personal finance / expense-tracking app: a FastAPI backend running
-on a home server, with a native Android client.
+A native Android personal finance / expense-tracking app. The app is
+**on-device only**: a local **Room** database is the single source of truth,
+with an optional **Google Drive backup** (export/restore of a JSON snapshot) for
+durability. There is no backend or server dependency at runtime.
 
 ## Repository layout
 
-| Path        | What it is                                                        |
-| ----------- | ----------------------------------------------------------------- |
-| `backend/`  | FastAPI JSON API (Python, `uv`), packaged as a Docker container.  |
-| `android/`  | Native Android app (Kotlin, Jetpack Compose).                     |
+| Path        | What it is                                          |
+| ----------- | --------------------------------------------------- |
+| `android/`  | Native Android app (Kotlin, Jetpack Compose).       |
 
-Each side has its own README with setup instructions:
-
-- [`backend/README.md`](backend/README.md)
-- [`android/README.md`](android/README.md)
+See [`android/README.md`](android/README.md) for setup, toolchain, and build
+instructions.

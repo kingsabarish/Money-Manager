@@ -5,10 +5,6 @@ Native Android app for tracking income, expenses, and budgets. The app is
 it has **no runtime dependency on the backend**. Data durability comes from an
 optional **Google Drive backup** (export/restore of a JSON snapshot).
 
-The `backend/` FastAPI project stays in the monorepo but is **decoupled** from
-the app — kept for a possible future web layer / for reading backups. Its domain
-model is the reference for the on-device schema.
-
 > **Status:** app shell + Material 3 theme + navigation in place; on-device data
 > layer and features landing incrementally.
 
@@ -115,9 +111,9 @@ sync.)
 
 ## Running during development
 
-Unlike the backend (Docker in WSL), the Android app builds and runs **natively
-on Windows** (no WSL/Docker) and deploys to a physical phone (recommended) or an
-emulator. No network/server setup is required — the app is fully on-device.
+The Android app builds and runs **natively on Windows** (no WSL/Docker) and
+deploys to a physical phone (recommended) or an emulator. No network/server
+setup is required — the app is fully on-device.
 
 ### Build & install from the command line
 

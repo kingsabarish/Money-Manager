@@ -2,11 +2,70 @@ package com.moneymanager.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Static brand palette used when dynamic color is unavailable (API < 31) or
-// disabled. Green/teal/amber reads as a "money" app without being loud.
-val BrandGreen = Color(0xFF2E7D32)
-val BrandGreenLight = Color(0xFF81C784)
-val BrandTeal = Color(0xFF00796B)
-val BrandTealLight = Color(0xFF4DB6AC)
-val BrandAmber = Color(0xFFFF8F00)
-val BrandAmberLight = Color(0xFFFFB74D)
+// Money Manager brand palette — a green-forward "finance" scheme with a teal
+// secondary and a warm gold tertiary accent. A complete set of Material 3 color
+// roles (not just the accents) so surfaces, containers, and outlines read as an
+// intentional theme rather than defaulting to plain white/black. Used whenever
+// dynamic (wallpaper) color is off or unavailable (API < 31).
+
+// --- Light ---
+val md_light_primary = Color(0xFF2E6B4F)
+val md_light_onPrimary = Color(0xFFFFFFFF)
+val md_light_primaryContainer = Color(0xFFB1F1C7)
+val md_light_onPrimaryContainer = Color(0xFF00210F)
+val md_light_secondary = Color(0xFF00696E)
+val md_light_onSecondary = Color(0xFFFFFFFF)
+val md_light_secondaryContainer = Color(0xFF6FF6FE)
+val md_light_onSecondaryContainer = Color(0xFF002022)
+val md_light_tertiary = Color(0xFF8A5100)
+val md_light_onTertiary = Color(0xFFFFFFFF)
+val md_light_tertiaryContainer = Color(0xFFFFDCBE)
+val md_light_onTertiaryContainer = Color(0xFF2C1600)
+val md_light_error = Color(0xFFBA1A1A)
+val md_light_onError = Color(0xFFFFFFFF)
+val md_light_errorContainer = Color(0xFFFFDAD6)
+val md_light_onErrorContainer = Color(0xFF410002)
+val md_light_background = Color(0xFFF6FBF4)
+val md_light_onBackground = Color(0xFF191C19)
+val md_light_surface = Color(0xFFF6FBF4)
+val md_light_onSurface = Color(0xFF191C19)
+val md_light_surfaceVariant = Color(0xFFDCE5DB)
+val md_light_onSurfaceVariant = Color(0xFF404942)
+val md_light_outline = Color(0xFF707972)
+val md_light_outlineVariant = Color(0xFFC0C9BF)
+val md_light_surfaceContainerLowest = Color(0xFFFFFFFF)
+val md_light_surfaceContainerLow = Color(0xFFF0F5EE)
+val md_light_surfaceContainer = Color(0xFFEAF0E8)
+val md_light_surfaceContainerHigh = Color(0xFFE5EAE3)
+val md_light_surfaceContainerHighest = Color(0xFFDFE4DD)
+
+// --- Dark ---
+val md_dark_primary = Color(0xFF96D5AC)
+val md_dark_onPrimary = Color(0xFF00391F)
+val md_dark_primaryContainer = Color(0xFF12522F)
+val md_dark_onPrimaryContainer = Color(0xFFB1F1C7)
+val md_dark_secondary = Color(0xFF4CD9E1)
+val md_dark_onSecondary = Color(0xFF00373A)
+val md_dark_secondaryContainer = Color(0xFF004F53)
+val md_dark_onSecondaryContainer = Color(0xFF6FF6FE)
+val md_dark_tertiary = Color(0xFFFFB870)
+val md_dark_onTertiary = Color(0xFF4A2800)
+val md_dark_tertiaryContainer = Color(0xFF693C00)
+val md_dark_onTertiaryContainer = Color(0xFFFFDCBE)
+val md_dark_error = Color(0xFFFFB4AB)
+val md_dark_onError = Color(0xFF690005)
+val md_dark_errorContainer = Color(0xFF93000A)
+val md_dark_onErrorContainer = Color(0xFFFFDAD6)
+val md_dark_background = Color(0xFF101510)
+val md_dark_onBackground = Color(0xFFE0E4DB)
+val md_dark_surface = Color(0xFF101510)
+val md_dark_onSurface = Color(0xFFE0E4DB)
+val md_dark_surfaceVariant = Color(0xFF404942)
+val md_dark_onSurfaceVariant = Color(0xFFC0C9BF)
+val md_dark_outline = Color(0xFF8A938B)
+val md_dark_outlineVariant = Color(0xFF404942)
+val md_dark_surfaceContainerLowest = Color(0xFF0B0F0B)
+val md_dark_surfaceContainerLow = Color(0xFF191C19)
+val md_dark_surfaceContainer = Color(0xFF1D211C)
+val md_dark_surfaceContainerHigh = Color(0xFF272B26)
+val md_dark_surfaceContainerHighest = Color(0xFF323631)

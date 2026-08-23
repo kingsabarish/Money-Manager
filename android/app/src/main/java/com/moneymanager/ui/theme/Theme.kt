@@ -12,30 +12,83 @@ import androidx.compose.ui.platform.LocalContext
 
 private val LightColorScheme =
     lightColorScheme(
-        primary = BrandGreen,
-        secondary = BrandTeal,
-        tertiary = BrandAmber,
+        primary = md_light_primary,
+        onPrimary = md_light_onPrimary,
+        primaryContainer = md_light_primaryContainer,
+        onPrimaryContainer = md_light_onPrimaryContainer,
+        secondary = md_light_secondary,
+        onSecondary = md_light_onSecondary,
+        secondaryContainer = md_light_secondaryContainer,
+        onSecondaryContainer = md_light_onSecondaryContainer,
+        tertiary = md_light_tertiary,
+        onTertiary = md_light_onTertiary,
+        tertiaryContainer = md_light_tertiaryContainer,
+        onTertiaryContainer = md_light_onTertiaryContainer,
+        error = md_light_error,
+        onError = md_light_onError,
+        errorContainer = md_light_errorContainer,
+        onErrorContainer = md_light_onErrorContainer,
+        background = md_light_background,
+        onBackground = md_light_onBackground,
+        surface = md_light_surface,
+        onSurface = md_light_onSurface,
+        surfaceVariant = md_light_surfaceVariant,
+        onSurfaceVariant = md_light_onSurfaceVariant,
+        outline = md_light_outline,
+        outlineVariant = md_light_outlineVariant,
+        surfaceContainerLowest = md_light_surfaceContainerLowest,
+        surfaceContainerLow = md_light_surfaceContainerLow,
+        surfaceContainer = md_light_surfaceContainer,
+        surfaceContainerHigh = md_light_surfaceContainerHigh,
+        surfaceContainerHighest = md_light_surfaceContainerHighest,
     )
 
 private val DarkColorScheme =
     darkColorScheme(
-        primary = BrandGreenLight,
-        secondary = BrandTealLight,
-        tertiary = BrandAmberLight,
+        primary = md_dark_primary,
+        onPrimary = md_dark_onPrimary,
+        primaryContainer = md_dark_primaryContainer,
+        onPrimaryContainer = md_dark_onPrimaryContainer,
+        secondary = md_dark_secondary,
+        onSecondary = md_dark_onSecondary,
+        secondaryContainer = md_dark_secondaryContainer,
+        onSecondaryContainer = md_dark_onSecondaryContainer,
+        tertiary = md_dark_tertiary,
+        onTertiary = md_dark_onTertiary,
+        tertiaryContainer = md_dark_tertiaryContainer,
+        onTertiaryContainer = md_dark_onTertiaryContainer,
+        error = md_dark_error,
+        onError = md_dark_onError,
+        errorContainer = md_dark_errorContainer,
+        onErrorContainer = md_dark_onErrorContainer,
+        background = md_dark_background,
+        onBackground = md_dark_onBackground,
+        surface = md_dark_surface,
+        onSurface = md_dark_onSurface,
+        surfaceVariant = md_dark_surfaceVariant,
+        onSurfaceVariant = md_dark_onSurfaceVariant,
+        outline = md_dark_outline,
+        outlineVariant = md_dark_outlineVariant,
+        surfaceContainerLowest = md_dark_surfaceContainerLowest,
+        surfaceContainerLow = md_dark_surfaceContainerLow,
+        surfaceContainer = md_dark_surfaceContainer,
+        surfaceContainerHigh = md_dark_surfaceContainerHigh,
+        surfaceContainerHighest = md_dark_surfaceContainerHighest,
     )
 
 /**
  * App-wide Material 3 theme.
  *
- * Dynamic (wallpaper-based) color is only available on Android 12 (API 31, "S")
- * and up; on our minSdk 26 baseline we must fall back to the static palette, so
- * the [Build.VERSION.SDK_INT] guard below is mandatory — calling the dynamic*
- * builders on older APIs would crash.
+ * Defaults to the static Money Manager brand palette so the app has a consistent,
+ * intentional look regardless of the device wallpaper. Dynamic (wallpaper-based)
+ * color can be opted into via [dynamicColor]; it is only available on Android 12
+ * (API 31, "S") and up, so on our minSdk 26 baseline the [Build.VERSION.SDK_INT]
+ * guard below is mandatory — calling the dynamic* builders on older APIs crashes.
  */
 @Composable
 fun MoneyManagerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colorScheme =

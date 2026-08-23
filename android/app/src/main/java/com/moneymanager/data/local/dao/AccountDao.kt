@@ -45,4 +45,14 @@ interface AccountDao {
 
     @Query("DELETE FROM accounts")
     suspend fun deleteAll()
+
+    // Restore clears rows child-first: the self-referential RESTRICT foreign key
+    // rejects deleting a parent while any child still points at it — even within a
+    // single `DELETE FROM accounts` statement — so a plain deleteAll() aborts
+    // whenever a sub-account exists.
+    @Query("DELETE FROM accounts WHERE parentId IS NOT NULL")
+    suspend fun deleteChildRows()
+
+    @Query("DELETE FROM accounts WHERE parentId IS NULL")
+    suspend fun deleteTopLevelRows()
 }

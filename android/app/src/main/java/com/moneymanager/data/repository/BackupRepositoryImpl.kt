@@ -61,10 +61,15 @@ class BackupRepositoryImpl
 
             return runCatching {
                 db.withTransaction {
-                    // Clear child-first to respect foreign keys.
+                    // Clear child-first to respect foreign keys. The self-referential
+                    // categories/accounts FKs use RESTRICT, which is enforced per row —
+                    // so sub-rows must go before their top-level parents (a blanket
+                    // deleteAll() aborts the moment a parent with a child is hit).
                     transactionDao.deleteAll()
-                    accountDao.deleteAll()
-                    categoryDao.deleteAll()
+                    accountDao.deleteChildRows()
+                    accountDao.deleteTopLevelRows()
+                    categoryDao.deleteChildRows()
+                    categoryDao.deleteTopLevelRows()
                     // Re-insert parent-first (codec orders top-level rows ahead of children).
                     categoryDao.insertAll(SnapshotCodec.categoryEntities(snapshot))
                     accountDao.insertAll(SnapshotCodec.accountEntities(snapshot))

@@ -45,4 +45,14 @@ interface CategoryDao {
 
     @Query("DELETE FROM categories")
     suspend fun deleteAll()
+
+    // Restore clears rows child-first: the self-referential RESTRICT foreign key
+    // rejects deleting a parent while any child still points at it — even within a
+    // single `DELETE FROM categories` statement — so a plain deleteAll() aborts
+    // whenever a subcategory exists.
+    @Query("DELETE FROM categories WHERE parentId IS NOT NULL")
+    suspend fun deleteChildRows()
+
+    @Query("DELETE FROM categories WHERE parentId IS NULL")
+    suspend fun deleteTopLevelRows()
 }

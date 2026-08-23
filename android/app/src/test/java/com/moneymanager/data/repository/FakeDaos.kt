@@ -77,6 +77,14 @@ class FakeCategoryDao(private val db: InMemoryDb) : CategoryDao {
     override suspend fun deleteAll() {
         db.categories.value = emptyList()
     }
+
+    override suspend fun deleteChildRows() {
+        db.categories.value = db.categories.value.filter { it.parentId == null }
+    }
+
+    override suspend fun deleteTopLevelRows() {
+        db.categories.value = db.categories.value.filter { it.parentId != null }
+    }
 }
 
 class FakeAccountDao(private val db: InMemoryDb) : AccountDao {
@@ -120,6 +128,14 @@ class FakeAccountDao(private val db: InMemoryDb) : AccountDao {
 
     override suspend fun deleteAll() {
         db.accounts.value = emptyList()
+    }
+
+    override suspend fun deleteChildRows() {
+        db.accounts.value = db.accounts.value.filter { it.parentId == null }
+    }
+
+    override suspend fun deleteTopLevelRows() {
+        db.accounts.value = db.accounts.value.filter { it.parentId != null }
     }
 }
 

@@ -42,6 +42,7 @@ import com.moneymanager.ui.theme.MoneyManagerTheme
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToManage: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -77,6 +78,7 @@ fun SettingsScreen(
     SettingsScreenContent(
         state = state,
         onNavigateBack = onNavigateBack,
+        onNavigateToManage = onNavigateToManage,
         onThemeModeChange = viewModel::onThemeModeChange,
         onBackUp = { exportLauncher.launch(viewModel.suggestedFileName) },
         onRestore = { importLauncher.launch(arrayOf("application/json")) },
@@ -90,6 +92,7 @@ fun SettingsScreen(
 private fun SettingsScreenContent(
     state: SettingsUiState,
     onNavigateBack: () -> Unit,
+    onNavigateToManage: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackUp: () -> Unit,
     onRestore: () -> Unit,
@@ -115,6 +118,10 @@ private fun SettingsScreenContent(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             ThemeSection(selected = state.themeMode, onChange = onThemeModeChange)
+
+            HorizontalDivider()
+
+            ManageSection(onManage = onNavigateToManage)
 
             HorizontalDivider()
 
@@ -163,6 +170,24 @@ private fun DriveSection(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Restore from Drive")
+        }
+    }
+}
+
+@Composable
+private fun ManageSection(onManage: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle("Categories & accounts")
+        Text(
+            text = "Add, rename, or remove the categories and accounts used when adding an expense.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            onClick = onManage,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Manage categories & accounts")
         }
     }
 }
@@ -272,6 +297,7 @@ private fun SettingsScreenPreview() {
                     status = BackupStatus.Idle,
                 ),
             onNavigateBack = {},
+            onNavigateToManage = {},
             onThemeModeChange = {},
             onBackUp = {},
             onRestore = {},

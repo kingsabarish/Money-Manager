@@ -5,6 +5,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.moneymanager.ui.feature.entry.EntryScreen
+import com.moneymanager.ui.feature.manage.ManageScreen
 import com.moneymanager.ui.feature.settings.SettingsScreen
 import com.moneymanager.ui.feature.transactions.HomeScreen
 
@@ -29,7 +30,13 @@ fun MoneyManagerNavHost() {
             )
         }
         composable<Settings> {
-            SettingsScreen(onNavigateBack = { navController.popBackStack() })
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToManage = { navController.navigate(Manage) },
+            )
+        }
+        composable<Manage> {
+            ManageScreen(onNavigateBack = { navController.popBackStack() })
         }
     }
 }

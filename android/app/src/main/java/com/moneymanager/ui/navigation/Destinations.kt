@@ -14,3 +14,6 @@ data object Entry
 
 @Serializable
 data object Settings
+
+@Serializable
+data object Manage

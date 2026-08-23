@@ -39,6 +39,96 @@ val md_light_surfaceContainer = Color(0xFFEAF0E8)
 val md_light_surfaceContainerHigh = Color(0xFFE5EAE3)
 val md_light_surfaceContainerHighest = Color(0xFFDFE4DD)
 
+// Alternative accent palettes (Blue / Purple / Orange). Each defines only the
+// three accent families (primary, secondary, tertiary + their containers); they
+// are layered over the shared green-tinted neutral surfaces and error roles via
+// ColorScheme.copy(...) in Theme.kt, so surfaces stay consistent and only the
+// accent hue changes.
+
+// --- Blue: light ---
+val blue_light_primary = Color(0xFF265DA8)
+val blue_light_onPrimary = Color(0xFFFFFFFF)
+val blue_light_primaryContainer = Color(0xFFD6E3FF)
+val blue_light_onPrimaryContainer = Color(0xFF001B3D)
+val blue_light_secondary = Color(0xFF545F71)
+val blue_light_onSecondary = Color(0xFFFFFFFF)
+val blue_light_secondaryContainer = Color(0xFFD8E3F8)
+val blue_light_onSecondaryContainer = Color(0xFF111C2B)
+val blue_light_tertiary = Color(0xFF6E5676)
+val blue_light_onTertiary = Color(0xFFFFFFFF)
+val blue_light_tertiaryContainer = Color(0xFFF7D8FF)
+val blue_light_onTertiaryContainer = Color(0xFF271430)
+
+// --- Blue: dark ---
+val blue_dark_primary = Color(0xFFA8C8FF)
+val blue_dark_onPrimary = Color(0xFF00315D)
+val blue_dark_primaryContainer = Color(0xFF004883)
+val blue_dark_onPrimaryContainer = Color(0xFFD6E3FF)
+val blue_dark_secondary = Color(0xFFBCC7DC)
+val blue_dark_onSecondary = Color(0xFF273141)
+val blue_dark_secondaryContainer = Color(0xFF3D4758)
+val blue_dark_onSecondaryContainer = Color(0xFFD8E3F8)
+val blue_dark_tertiary = Color(0xFFDBBCE3)
+val blue_dark_onTertiary = Color(0xFF3D2846)
+val blue_dark_tertiaryContainer = Color(0xFF553F5D)
+val blue_dark_onTertiaryContainer = Color(0xFFF7D8FF)
+
+// --- Purple: light ---
+val purple_light_primary = Color(0xFF6750A4)
+val purple_light_onPrimary = Color(0xFFFFFFFF)
+val purple_light_primaryContainer = Color(0xFFEADDFF)
+val purple_light_onPrimaryContainer = Color(0xFF21005D)
+val purple_light_secondary = Color(0xFF625B71)
+val purple_light_onSecondary = Color(0xFFFFFFFF)
+val purple_light_secondaryContainer = Color(0xFFE8DEF8)
+val purple_light_onSecondaryContainer = Color(0xFF1D192B)
+val purple_light_tertiary = Color(0xFF7D5260)
+val purple_light_onTertiary = Color(0xFFFFFFFF)
+val purple_light_tertiaryContainer = Color(0xFFFFD8E4)
+val purple_light_onTertiaryContainer = Color(0xFF31111D)
+
+// --- Purple: dark ---
+val purple_dark_primary = Color(0xFFD0BCFF)
+val purple_dark_onPrimary = Color(0xFF381E72)
+val purple_dark_primaryContainer = Color(0xFF4F378B)
+val purple_dark_onPrimaryContainer = Color(0xFFEADDFF)
+val purple_dark_secondary = Color(0xFFCCC2DC)
+val purple_dark_onSecondary = Color(0xFF332D41)
+val purple_dark_secondaryContainer = Color(0xFF4A4458)
+val purple_dark_onSecondaryContainer = Color(0xFFE8DEF8)
+val purple_dark_tertiary = Color(0xFFEFB8C8)
+val purple_dark_onTertiary = Color(0xFF492532)
+val purple_dark_tertiaryContainer = Color(0xFF633B48)
+val purple_dark_onTertiaryContainer = Color(0xFFFFD8E4)
+
+// --- Orange: light ---
+val orange_light_primary = Color(0xFF8F4C00)
+val orange_light_onPrimary = Color(0xFFFFFFFF)
+val orange_light_primaryContainer = Color(0xFFFFDCC2)
+val orange_light_onPrimaryContainer = Color(0xFF2E1500)
+val orange_light_secondary = Color(0xFF755846)
+val orange_light_onSecondary = Color(0xFFFFFFFF)
+val orange_light_secondaryContainer = Color(0xFFFFDCC2)
+val orange_light_onSecondaryContainer = Color(0xFF2B1708)
+val orange_light_tertiary = Color(0xFF5F6236)
+val orange_light_onTertiary = Color(0xFFFFFFFF)
+val orange_light_tertiaryContainer = Color(0xFFE5E8B0)
+val orange_light_onTertiaryContainer = Color(0xFF1C1D00)
+
+// --- Orange: dark ---
+val orange_dark_primary = Color(0xFFFFB77C)
+val orange_dark_onPrimary = Color(0xFF4C2700)
+val orange_dark_primaryContainer = Color(0xFF6D3900)
+val orange_dark_onPrimaryContainer = Color(0xFFFFDCC2)
+val orange_dark_secondary = Color(0xFFE5BFA8)
+val orange_dark_onSecondary = Color(0xFF422B1B)
+val orange_dark_secondaryContainer = Color(0xFF5B4130)
+val orange_dark_onSecondaryContainer = Color(0xFFFFDCC2)
+val orange_dark_tertiary = Color(0xFFC9CC96)
+val orange_dark_onTertiary = Color(0xFF32330C)
+val orange_dark_tertiaryContainer = Color(0xFF484A20)
+val orange_dark_onTertiaryContainer = Color(0xFFE5E8B0)
+
 // --- Dark ---
 val md_dark_primary = Color(0xFF96D5AC)
 val md_dark_onPrimary = Color(0xFF00391F)

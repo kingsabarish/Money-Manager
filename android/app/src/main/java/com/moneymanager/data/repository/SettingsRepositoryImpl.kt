@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.moneymanager.domain.model.AppSettings
+import com.moneymanager.domain.model.AppTheme
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +29,10 @@ class SettingsRepositoryImpl
                         prefs[KEY_THEME_MODE]
                             ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                             ?: ThemeMode.SYSTEM,
+                    appTheme =
+                        prefs[KEY_APP_THEME]
+                            ?.let { runCatching { AppTheme.valueOf(it) }.getOrNull() }
+                            ?: AppTheme.GREEN,
                     lastBackupAtEpochMs = prefs[KEY_LAST_BACKUP_AT],
                 )
             }
@@ -36,12 +41,17 @@ class SettingsRepositoryImpl
             dataStore.edit { it[KEY_THEME_MODE] = mode.name }
         }
 
+        override suspend fun setAppTheme(theme: AppTheme) {
+            dataStore.edit { it[KEY_APP_THEME] = theme.name }
+        }
+
         override suspend fun setLastBackupAt(epochMs: Long) {
             dataStore.edit { it[KEY_LAST_BACKUP_AT] = epochMs }
         }
 
         private companion object {
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+            val KEY_APP_THEME = stringPreferencesKey("app_theme")
             val KEY_LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
         }
     }

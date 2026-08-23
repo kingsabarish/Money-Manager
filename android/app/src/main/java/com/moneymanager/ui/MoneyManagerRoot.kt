@@ -14,22 +14,22 @@ import com.moneymanager.ui.navigation.MoneyManagerNavHost
 import com.moneymanager.ui.theme.MoneyManagerTheme
 
 /**
- * Top-level composable: applies the theme (honoring the user's preference) and
+ * Top-level composable: applies the theme (honoring the user's preferences) and
  * hosts the navigation graph. Named "Root" to avoid clashing with the
  * [com.moneymanager.MoneyManagerApp] Application class.
  */
 @Composable
 fun MoneyManagerRoot(viewModel: MoneyManagerRootViewModel = hiltViewModel()) {
-    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val prefs by viewModel.themePrefs.collectAsStateWithLifecycle()
 
     val darkTheme =
-        when (themeMode) {
+        when (prefs.themeMode) {
             ThemeMode.SYSTEM -> isSystemInDarkTheme()
             ThemeMode.LIGHT -> false
             ThemeMode.DARK -> true
         }
 
-    MoneyManagerTheme(darkTheme = darkTheme) {
+    MoneyManagerTheme(appTheme = prefs.appTheme, darkTheme = darkTheme) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,

@@ -1,6 +1,7 @@
 package com.moneymanager.domain.repository
 
 import com.moneymanager.domain.model.AppSettings
+import com.moneymanager.domain.model.AppTheme
 import com.moneymanager.domain.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
 
@@ -9,6 +10,8 @@ interface SettingsRepository {
     fun observe(): Flow<AppSettings>
 
     suspend fun setThemeMode(mode: ThemeMode)
+
+    suspend fun setAppTheme(theme: AppTheme)
 
     suspend fun setLastBackupAt(epochMs: Long)
 }

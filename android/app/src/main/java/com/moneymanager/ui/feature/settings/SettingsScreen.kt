@@ -1,16 +1,25 @@
 package com.moneymanager.ui.feature.settings
 
 import android.app.Activity
+import android.os.Build
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,18 +35,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.moneymanager.domain.model.AppTheme
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.ui.theme.MoneyManagerTheme
 
 /**
- * Settings: theme preference plus local JSON backup/restore. Backup writes a
+ * Settings: theme preferences plus local JSON backup/restore. Backup writes a
  * portable snapshot to a file the user picks (Storage Access Framework); restore
- * reads one back. Google Drive auto-backup layers on top of the same snapshot.
+ * reads one back. Google Drive backup layers on top of the same snapshot.
  */
 @Composable
 fun SettingsScreen(
@@ -80,6 +91,7 @@ fun SettingsScreen(
         onNavigateBack = onNavigateBack,
         onNavigateToManage = onNavigateToManage,
         onThemeModeChange = viewModel::onThemeModeChange,
+        onAppThemeChange = viewModel::onAppThemeChange,
         onBackUp = { exportLauncher.launch(viewModel.suggestedFileName) },
         onRestore = { importLauncher.launch(arrayOf("application/json")) },
         onDriveBackup = viewModel::backupToDrive,
@@ -94,6 +106,7 @@ private fun SettingsScreenContent(
     onNavigateBack: () -> Unit,
     onNavigateToManage: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onAppThemeChange: (AppTheme) -> Unit,
     onBackUp: () -> Unit,
     onRestore: () -> Unit,
     onDriveBackup: () -> Unit,
@@ -114,10 +127,16 @@ private fun SettingsScreenContent(
                 Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .verticalScroll(rememberScrollState())
                     .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            ThemeSection(selected = state.themeMode, onChange = onThemeModeChange)
+            ThemeSection(
+                selectedMode = state.themeMode,
+                selectedTheme = state.appTheme,
+                onModeChange = onThemeModeChange,
+                onThemeChange = onAppThemeChange,
+            )
 
             HorizontalDivider()
 
@@ -134,7 +153,7 @@ private fun SettingsScreenContent(
             HorizontalDivider()
 
             DriveSection(
-                working = state.status is BackupStatus.Working,
+                state = state,
                 onDriveBackup = onDriveBackup,
                 onDriveRestore = onDriveRestore,
             )
@@ -144,10 +163,11 @@ private fun SettingsScreenContent(
 
 @Composable
 private fun DriveSection(
-    working: Boolean,
+    state: SettingsUiState,
     onDriveBackup: () -> Unit,
     onDriveRestore: () -> Unit,
 ) {
+    val working = state.status is BackupStatus.Working
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("Google Drive")
         Text(
@@ -171,6 +191,10 @@ private fun DriveSection(
         ) {
             Text("Restore from Drive")
         }
+
+        if (state.statusSource == BackupSource.DRIVE) {
+            StatusMessage(state.status)
+        }
     }
 }
 
@@ -192,23 +216,73 @@ private fun ManageSection(onManage: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ThemeSection(selected: ThemeMode, onChange: (ThemeMode) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun ThemeSection(
+    selectedMode: ThemeMode,
+    selectedTheme: AppTheme,
+    onModeChange: (ThemeMode) -> Unit,
+    onThemeChange: (AppTheme) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("Appearance")
-        Column(
+
+        Text(
+            text = "Light or dark",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.selectableGroup(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ThemeMode.entries.forEach { mode ->
                 FilterChip(
-                    selected = mode == selected,
-                    onClick = { onChange(mode) },
+                    selected = mode == selectedMode,
+                    onClick = { onModeChange(mode) },
                     label = { Text(mode.label()) },
                 )
             }
         }
+
+        Text(
+            text = "Color theme",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.selectableGroup(),
+        ) {
+            AppTheme.entries.forEach { theme ->
+                // "Match wallpaper" (dynamic color) only exists on Android 12+.
+                if (theme == AppTheme.DYNAMIC &&
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.S
+                ) {
+                    return@forEach
+                }
+                FilterChip(
+                    selected = theme == selectedTheme,
+                    onClick = { onThemeChange(theme) },
+                    label = { Text(theme.label()) },
+                    leadingIcon = { ThemeSwatch(theme) },
+                )
+            }
+        }
     }
+}
+
+/** A small color dot previewing a palette's accent; omitted for the dynamic option. */
+@Composable
+private fun ThemeSwatch(theme: AppTheme) {
+    val color = theme.swatchColor() ?: return
+    Box(
+        modifier =
+            Modifier
+                .size(16.dp)
+                .background(color, CircleShape)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+    )
 }
 
 @Composable
@@ -246,14 +320,22 @@ private fun BackupSection(
             Text("Restore from file")
         }
 
-        when (val status = state.status) {
-            is BackupStatus.Working -> CircularProgressIndicator()
-            is BackupStatus.Success ->
-                Text(status.message, color = MaterialTheme.colorScheme.primary)
-            is BackupStatus.Error ->
-                Text(status.message, color = MaterialTheme.colorScheme.error)
-            BackupStatus.Idle -> Unit
+        if (state.statusSource == BackupSource.FILE) {
+            StatusMessage(state.status)
         }
+    }
+}
+
+/** Renders the shared backup [status] as a spinner, success, or error line. */
+@Composable
+private fun StatusMessage(status: BackupStatus) {
+    when (status) {
+        is BackupStatus.Working -> CircularProgressIndicator()
+        is BackupStatus.Success ->
+            Text(status.message, color = MaterialTheme.colorScheme.primary)
+        is BackupStatus.Error ->
+            Text(status.message, color = MaterialTheme.colorScheme.error)
+        BackupStatus.Idle -> Unit
     }
 }
 
@@ -271,6 +353,25 @@ private fun ThemeMode.label(): String =
         ThemeMode.SYSTEM -> "System default"
         ThemeMode.LIGHT -> "Light"
         ThemeMode.DARK -> "Dark"
+    }
+
+private fun AppTheme.label(): String =
+    when (this) {
+        AppTheme.DYNAMIC -> "Match wallpaper"
+        AppTheme.GREEN -> "Green"
+        AppTheme.BLUE -> "Blue"
+        AppTheme.PURPLE -> "Purple"
+        AppTheme.ORANGE -> "Orange"
+    }
+
+/** Representative accent for the palette's preview dot; null = no fixed color (dynamic). */
+private fun AppTheme.swatchColor(): Color? =
+    when (this) {
+        AppTheme.DYNAMIC -> null
+        AppTheme.GREEN -> Color(0xFF2E6B4F)
+        AppTheme.BLUE -> Color(0xFF265DA8)
+        AppTheme.PURPLE -> Color(0xFF6750A4)
+        AppTheme.ORANGE -> Color(0xFF8F4C00)
     }
 
 private fun lastBackupLabel(epochMs: Long?): String =
@@ -293,12 +394,14 @@ private fun SettingsScreenPreview() {
             state =
                 SettingsUiState(
                     themeMode = ThemeMode.SYSTEM,
+                    appTheme = AppTheme.GREEN,
                     lastBackupAtEpochMs = null,
                     status = BackupStatus.Idle,
                 ),
             onNavigateBack = {},
             onNavigateToManage = {},
             onThemeModeChange = {},
+            onAppThemeChange = {},
             onBackUp = {},
             onRestore = {},
             onDriveBackup = {},

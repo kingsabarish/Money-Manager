@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.moneymanager.domain.model.AppError
 import com.moneymanager.domain.model.AppResult
+import com.moneymanager.domain.model.AppTheme
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.domain.repository.BackupRepository
 import com.moneymanager.domain.repository.SettingsRepository
@@ -39,10 +40,18 @@ sealed interface BackupStatus {
     data class Error(val message: String) : BackupStatus
 }
 
+/** Which control a [BackupStatus] belongs to, so its message renders in the right section. */
+enum class BackupSource {
+    FILE,
+    DRIVE,
+}
+
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val appTheme: AppTheme = AppTheme.GREEN,
     val lastBackupAtEpochMs: Long? = null,
     val status: BackupStatus = BackupStatus.Idle,
+    val statusSource: BackupSource = BackupSource.FILE,
 )
 
 @HiltViewModel
@@ -55,6 +64,7 @@ class SettingsViewModel
         private val driveBackup: GoogleDriveBackup,
     ) : ViewModel() {
         private val status = MutableStateFlow<BackupStatus>(BackupStatus.Idle)
+        private val statusSource = MutableStateFlow(BackupSource.FILE)
 
         private val consentRequestsFlow = MutableSharedFlow<IntentSender>(extraBufferCapacity = 1)
 
@@ -66,11 +76,17 @@ class SettingsViewModel
         private var pendingSuccessMessage: String = ""
 
         val uiState: StateFlow<SettingsUiState> =
-            combine(settingsRepository.observe(), status) { settings, status ->
+            combine(
+                settingsRepository.observe(),
+                status,
+                statusSource,
+            ) { settings, status, statusSource ->
                 SettingsUiState(
                     themeMode = settings.themeMode,
+                    appTheme = settings.appTheme,
                     lastBackupAtEpochMs = settings.lastBackupAtEpochMs,
                     status = status,
+                    statusSource = statusSource,
                 )
             }.stateIn(
                 scope = viewModelScope,
@@ -86,9 +102,14 @@ class SettingsViewModel
             viewModelScope.launch { settingsRepository.setThemeMode(mode) }
         }
 
+        fun onAppThemeChange(theme: AppTheme) {
+            viewModelScope.launch { settingsRepository.setAppTheme(theme) }
+        }
+
         /** Export the database to the user-picked [uri] (from CreateDocument). */
         fun exportTo(uri: Uri) {
             viewModelScope.launch {
+                statusSource.value = BackupSource.FILE
                 status.value = BackupStatus.Working
                 when (val result = backupRepository.exportToJson()) {
                     is AppResult.Success -> {
@@ -113,6 +134,7 @@ class SettingsViewModel
         /** Restore the database from the user-picked [uri] (from OpenDocument). */
         fun importFrom(uri: Uri) {
             viewModelScope.launch {
+                statusSource.value = BackupSource.FILE
                 status.value = BackupStatus.Working
                 val text = runCatching { readText(uri) }
                 if (text.isFailure) {
@@ -140,6 +162,7 @@ class SettingsViewModel
 
         fun onConsentCanceled() {
             pendingDriveAction = null
+            statusSource.value = BackupSource.DRIVE
             status.value = BackupStatus.Error("Google sign-in was cancelled")
         }
 
@@ -147,6 +170,7 @@ class SettingsViewModel
             pendingDriveAction = action
             pendingSuccessMessage = successMessage
             viewModelScope.launch {
+                statusSource.value = BackupSource.DRIVE
                 status.value = BackupStatus.Working
                 when (val result = action()) {
                     is DriveResult.Success -> {

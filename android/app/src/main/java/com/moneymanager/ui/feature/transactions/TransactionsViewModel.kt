@@ -6,12 +6,15 @@ import com.moneymanager.domain.repository.AccountRepository
 import com.moneymanager.domain.repository.CategoryRepository
 import com.moneymanager.domain.repository.TransactionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.YearMonth
 import javax.inject.Inject
 
 /** A single expense row, with category/account names already resolved. */
@@ -32,6 +35,8 @@ data class DaySection(
 
 data class HomeUiState(
     val loading: Boolean = true,
+    val month: YearMonth = YearMonth.now(),
+    val monthTotal: BigDecimal = BigDecimal.ZERO,
     val sections: List<DaySection> = emptyList(),
 ) {
     val isEmpty: Boolean get() = !loading && sections.isEmpty()
@@ -45,17 +50,23 @@ class TransactionsViewModel
         categoryRepository: CategoryRepository,
         accountRepository: AccountRepository,
     ) : ViewModel() {
+        private val selectedMonth = MutableStateFlow(YearMonth.now())
+
         val uiState: StateFlow<HomeUiState> =
             combine(
                 transactionRepository.observeAll(),
                 categoryRepository.observeAll(),
                 accountRepository.observeAll(),
-            ) { transactions, categories, accounts ->
+                selectedMonth,
+            ) { transactions, categories, accounts, month ->
                 val categoryNames = categories.associate { it.id to it.name }
                 val accountNames = accounts.associate { it.id to it.name }
 
+                val monthTransactions =
+                    transactions.filter { YearMonth.from(it.date) == month }
+
                 val sections =
-                    transactions
+                    monthTransactions
                         .groupBy { it.date }
                         .toSortedMap(reverseOrder())
                         .map { (date, dayTransactions) ->
@@ -76,10 +87,20 @@ class TransactionsViewModel
                             )
                         }
 
-                HomeUiState(loading = false, sections = sections)
+                HomeUiState(
+                    loading = false,
+                    month = month,
+                    monthTotal =
+                        monthTransactions.fold(BigDecimal.ZERO) { acc, t -> acc + t.amount },
+                    sections = sections,
+                )
             }.stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
                 initialValue = HomeUiState(),
             )
+
+        fun previousMonth() = selectedMonth.update { it.minusMonths(1) }
+
+        fun nextMonth() = selectedMonth.update { it.plusMonths(1) }
     }

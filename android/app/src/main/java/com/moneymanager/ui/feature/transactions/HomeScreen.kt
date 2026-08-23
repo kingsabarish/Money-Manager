@@ -27,11 +27,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.moneymanager.ui.components.MonthHeader
+import com.moneymanager.ui.components.monthSwipe
 import com.moneymanager.ui.theme.MoneyManagerTheme
 import com.moneymanager.ui.util.formatAsCurrency
 import com.moneymanager.ui.util.formatAsDay
+import com.moneymanager.ui.util.formatAsMonth
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.time.YearMonth
 
 /**
  * Landing screen: the expense list, grouped by day, with a FAB to add a new
@@ -48,6 +52,8 @@ fun HomeScreen(
         state = uiState,
         onAddExpense = onAddExpense,
         onEditExpense = onEditExpense,
+        onPreviousMonth = viewModel::previousMonth,
+        onNextMonth = viewModel::nextMonth,
     )
 }
 
@@ -57,6 +63,8 @@ private fun HomeScreenContent(
     state: HomeUiState,
     onAddExpense: () -> Unit,
     onEditExpense: (Long) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -70,15 +78,29 @@ private fun HomeScreenContent(
             }
         },
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-            when {
-                state.isEmpty ->
-                    Text(
-                        text = "No expenses yet.\nTap + to add your first one.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                    )
-                else -> ExpenseList(state.sections, onEditExpense)
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .monthSwipe(onPrevious = onPreviousMonth, onNext = onNextMonth),
+        ) {
+            MonthHeader(
+                label = state.month.formatAsMonth(),
+                onPrevious = onPreviousMonth,
+                onNext = onNextMonth,
+                subtitle = state.monthTotal.formatAsCurrency(),
+            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                when {
+                    state.isEmpty ->
+                        Text(
+                            text = "No expenses in ${state.month.formatAsMonth()}.\nSwipe or tap ‹ › to change month.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                        )
+                    else -> ExpenseList(state.sections, onEditExpense)
+                }
             }
         }
     }
@@ -169,9 +191,17 @@ private fun HomeScreenPreview() {
     MoneyManagerTheme {
         Surface {
             HomeScreenContent(
-                state = HomeUiState(loading = false, sections = sample),
+                state =
+                    HomeUiState(
+                        loading = false,
+                        month = YearMonth.of(2026, 8),
+                        monthTotal = BigDecimal("42.50"),
+                        sections = sample,
+                    ),
                 onAddExpense = {},
                 onEditExpense = {},
+                onPreviousMonth = {},
+                onNextMonth = {},
             )
         }
     }

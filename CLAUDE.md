@@ -66,6 +66,26 @@ Persistence:
   **any schema change requires recreating the DB volume** (a data reset) until
   Alembic migrations exist. Call this out before doing it.
 
+## Android app architecture & conventions
+
+Layout (`android/` is a single-module Gradle project — the `:app` module):
+
+- Native **Kotlin + Jetpack Compose** (Material 3), organized
+  **package-by-feature** under `app/src/main/java/com/moneymanager/`:
+  `data/{remote,local,repository}`, `domain/{model,repository}`,
+  `ui/{theme,components,navigation,feature/*}`, `widget/`, `di/`. Empty layers
+  are held by `.gitkeep` until filled in.
+- The UI depends only on repository **interfaces** in `domain/repository/`;
+  concrete implementations live in `data/repository/`.
+- Stack: Retrofit + OkHttp + kotlinx.serialization (API), Room (offline cache),
+  DataStore (settings), Hilt (DI), Glance (widget), WorkManager (sync).
+- Versions are centralized in `android/gradle/libs.versions.toml`. Pins: AGP
+  **9.3**, Gradle **9.5.0**, Kotlin **2.4.10**, compileSdk/targetSdk **36**,
+  minSdk **26**, JVM target **17**.
+- Android blocks cleartext HTTP by default (API 28+). Reaching the backend over
+  plain `http://` (Tailscale) needs a network security config — added in the
+  first networking slice.
+
 ## Python environment
 
 - Use **`uv`** for all Python management (dependencies, virtualenv, running).
@@ -73,6 +93,22 @@ Persistence:
 - Install **`ruff`** and **`mypy`** as dev dependencies via `uv`.
 - Full local gate (from `backend/`): `uv run ruff check . && uv run ruff format
   --check . && uv run mypy && uv run pytest -q`.
+
+## Android environment
+
+- Built **SDK-only, without Android Studio** — the Android command-line tools +
+  a JDK, driven from VS Code / a terminal, deployed to a **physical device**
+  over USB/Wi-Fi debugging (no emulator). Full install steps live in
+  `android/README.md`.
+- Toolchain on the dev PC: a **JDK** (via `JAVA_HOME`) and the **Android SDK**
+  at `C:\Android\Sdk` (via `ANDROID_HOME` / `ANDROID_SDK_ROOT`), with
+  `cmdline-tools\latest\bin` and `platform-tools` on `PATH`.
+- The build's JVM **target** is 17 (AGP 9.3 baseline); the JDK that *runs*
+  Gradle may be newer (this machine uses JDK 26).
+- `android/local.properties` (holds `sdk.dir`) is **machine-local and
+  gitignored** — never commit it. Every other `android/` config is committed.
+- Gradle runs via the wrapper (`./gradlew` from `android/`), generated once
+  with `gradle wrapper`.
 
 ## Code quality (required for every change)
 

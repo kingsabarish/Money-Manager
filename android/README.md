@@ -20,41 +20,109 @@ Versions are centralized in [`gradle/libs.versions.toml`](gradle/libs.versions.t
 
 ## Requirements
 
-- **JDK 17**, **Android Studio** (current stable), **Android SDK 36**
-- Gradle **9.5** via the wrapper (AGP **9.3**)
+- **JDK 17+** — 17 is AGP's baseline; a newer JDK works too (this project was
+  set up with **JDK 26**)
+- **Android SDK 36** — Platform 36 + Build-Tools 36 + Platform-Tools (`adb`)
+- Gradle **9.5.0** via the wrapper (AGP **9.3**)
+- Either **Android Studio** *or* the **command-line tools only** — see
+  [Installing the build toolchain](#installing-the-build-toolchain-sdk-only-no-android-studio)
+  for the SDK-only setup used here.
+
+## Installing the build toolchain (SDK-only, no Android Studio)
+
+The setup used for this project: the Android command-line tools + a JDK, driven
+from VS Code / a terminal and deployed to a physical phone — no Android Studio,
+no emulator.
+
+> Paths below are the Windows locations used here (SDK at `C:\Android\Sdk`);
+> adjust for your OS. Everything is installed from downloads/zip (`winget` was
+> unusable in this environment).
+
+### 1. JDK
+
+Install a JDK (17+ — this project used **JDK 26**) and note its path, e.g.
+`C:\Program Files\Java\jdk-26.0.2.1`.
+
+### 2. Android command-line tools
+
+1. Download **"Command line tools only"** from
+   <https://developer.android.com/studio#command-line-tools-only>.
+2. Unzip so the layout is **exactly** this (the zip's `cmdline-tools` contents
+   must sit inside a folder literally named `latest`):
+
+   ```text
+   C:\Android\Sdk\cmdline-tools\latest\bin\sdkmanager.bat
+   ```
+
+### 3. Environment variables (User scope)
+
+| Variable | Value |
+| --- | --- |
+| `JAVA_HOME` | your JDK path (e.g. `C:\Program Files\Java\jdk-26.0.2.1`) |
+| `ANDROID_HOME` | `C:\Android\Sdk` |
+| `ANDROID_SDK_ROOT` | `C:\Android\Sdk` |
+
+Then add to `PATH`: `%JAVA_HOME%\bin`, `%ANDROID_HOME%\cmdline-tools\latest\bin`,
+and `%ANDROID_HOME%\platform-tools`. **Open a new terminal** so they load.
+
+### 4. SDK packages
+
+```bash
+sdkmanager --licenses                                             # accept all (y)
+sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+```
+
+- `platform-tools` provides **`adb`** (needed to talk to the physical device).
+- `platforms;android-36` + `build-tools;36.0.0` match `compileSdk` /
+  `targetSdk 36`.
+
+### 5. `local.properties`
+
+Point Gradle at the SDK. This file is **machine-local and gitignored — never
+commit it**:
+
+```properties
+sdk.dir=C\:\\Android\\Sdk
+```
+
+### 6. Verify
+
+```bash
+java -version         # the JDK
+sdkmanager --version
+adb version           # from platform-tools
+```
 
 ## Getting started
 
 Open the `android/` folder in Android Studio, which generates
 `local.properties` (SDK path) and the Gradle wrapper on first sync.
 
-To generate the Gradle wrapper from the command line instead:
+To generate the Gradle wrapper from the command line instead (SDK-only setup):
 
 ```bash
 cd android
-gradle wrapper --gradle-version 9.5
+gradle wrapper --gradle-version 9.5.0
 ```
 
 ## Running during development
 
 Unlike the backend (Docker in WSL), the Android app builds and runs **natively
-on Windows through Android Studio** — no WSL, Docker, or separate SDK / JDK /
-Gradle installs are needed.
+on Windows** (no WSL/Docker) and deploys to a physical phone or an emulator.
 
-### Minimal install
+### Two install paths
 
-**Just Android Studio.** Its first-run setup downloads everything else the build
-depends on:
+- **SDK-only (used here):** the command-line tools + a JDK, driven from VS Code
+  — see [Installing the build toolchain](#installing-the-build-toolchain-sdk-only-no-android-studio)
+  above. Best if you don't want the IDE; pair it with a physical device.
+- **Android Studio (all-in-one):** its first-run setup downloads everything the
+  build needs — a bundled JDK (JetBrains Runtime 17+), the Android SDK Platform
+  36 + Build-Tools 36, Platform-Tools (`adb`), and the Emulator; Gradle comes
+  from the project wrapper. Add anything the wizard skipped under **SDK Manager**
+  (Settings → Languages & Frameworks → Android SDK).
 
-- a bundled **JDK** (JetBrains Runtime, 17+) — no separate JDK,
-- the **Android SDK Platform 36** + **Build-Tools 36**,
-- **Platform-Tools** (includes `adb`),
-- the Android **Emulator**,
-- Gradle is fetched by the project's wrapper.
-
-If the wizard skipped any, add them under **SDK Manager** (Settings → Languages &
-Frameworks → Android SDK). The only extra you need is a run target — a physical
-phone or an emulator (below).
+Either way, the only extra you need is a run target — a physical phone
+(recommended) or an emulator (below).
 
 ### Run on a physical phone (recommended)
 

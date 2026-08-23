@@ -49,6 +49,19 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+// MaterialKolor (a Compose-Multiplatform library) transitively requests
+// androidx.compose.material3 1.5.0-alpha, which is compiled against a newer
+// compose-foundation than the stable Compose BOM ships. Mixing them crashes at
+// runtime (AbstractMethodError: foundation.style.CustomStyle.applyStyle, hit as
+// soon as an OutlinedTextField composes). Pin material3 to the BOM version so
+// the whole Compose stack stays on one aligned, stable release.
+configurations.configureEach {
+    resolutionStrategy {
+        force("androidx.compose.material3:material3:1.4.0")
+        force("androidx.compose.material3:material3-android:1.4.0")
+    }
+}
+
 // jvmTarget is not set explicitly: with AGP built-in Kotlin it defaults to
 // android.compileOptions.targetCompatibility (17 above).
 

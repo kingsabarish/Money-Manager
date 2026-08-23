@@ -141,6 +141,10 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
         db.transactions.value = db.transactions.value + entities
     }
 
+    override suspend fun update(entity: TransactionEntity) {
+        db.transactions.value = db.transactions.value.map { if (it.id == entity.id) entity else it }
+    }
+
     override suspend fun delete(entity: TransactionEntity) {
         db.transactions.value = db.transactions.value.filterNot { it.id == entity.id }
     }

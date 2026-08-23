@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Update
 import com.moneymanager.data.local.entity.TransactionEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -20,6 +21,9 @@ interface TransactionDao {
 
     @Insert
     suspend fun insert(entity: TransactionEntity): Long
+
+    @Update
+    suspend fun update(entity: TransactionEntity)
 
     @Insert
     suspend fun insertAll(entities: List<TransactionEntity>)

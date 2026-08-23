@@ -25,5 +25,18 @@ interface TransactionRepository {
         note: String?,
     ): AppResult<Transaction>
 
+    /**
+     * Update an existing expense. Fails with NotFound if [id] does not exist, or
+     * Validation if [amount] is not positive or a referenced id does not exist.
+     */
+    suspend fun updateExpense(
+        id: Long,
+        amount: BigDecimal,
+        date: LocalDate,
+        categoryId: Long,
+        accountId: Long,
+        note: String?,
+    ): AppResult<Transaction>
+
     suspend fun delete(id: Long): AppResult<Unit>
 }

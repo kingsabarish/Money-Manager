@@ -81,4 +81,59 @@ class TransactionRepositoryImplTest {
             repo.addExpense(BigDecimal("1.00"), LocalDate.of(2026, 8, 23), 1, 1, "   ")
             assertEquals(null, db.transactions.value.single().note)
         }
+
+    @Test
+    fun `updates an existing expense in place`() =
+        runTest {
+            val id =
+                (repo.addExpense(BigDecimal("1.00"), LocalDate.of(2026, 8, 23), 1, 1, "old")
+                    as AppResult.Success).data.id
+
+            val result =
+                repo.updateExpense(
+                    id = id,
+                    amount = BigDecimal("2.5"),
+                    date = LocalDate.of(2026, 8, 24),
+                    categoryId = 1,
+                    accountId = 1,
+                    note = "new",
+                )
+
+            assertTrue(result is AppResult.Success)
+            val stored = db.transactions.value.single()
+            assertEquals(id, stored.id)
+            assertEquals(BigDecimal("2.50"), stored.amount)
+            assertEquals(LocalDate.of(2026, 8, 24), stored.date)
+            assertEquals("new", stored.note)
+            assertEquals(1, db.transactions.value.size)
+        }
+
+    @Test
+    fun `updating a missing expense returns NotFound`() =
+        runTest {
+            val result =
+                repo.updateExpense(999, BigDecimal("1.00"), LocalDate.of(2026, 8, 23), 1, 1, null)
+            assertTrue(result.errorOrNull() is AppError.NotFound)
+        }
+
+    @Test
+    fun `updating with a non-positive amount is rejected`() =
+        runTest {
+            val id =
+                (repo.addExpense(BigDecimal("1.00"), LocalDate.of(2026, 8, 23), 1, 1, null)
+                    as AppResult.Success).data.id
+            val result =
+                repo.updateExpense(id, BigDecimal.ZERO, LocalDate.of(2026, 8, 23), 1, 1, null)
+            assertTrue(result.errorOrNull() is AppError.Validation)
+        }
+
+    @Test
+    fun `deletes an expense`() =
+        runTest {
+            val id =
+                (repo.addExpense(BigDecimal("1.00"), LocalDate.of(2026, 8, 23), 1, 1, null)
+                    as AppResult.Success).data.id
+            assertTrue(repo.delete(id) is AppResult.Success)
+            assertTrue(db.transactions.value.isEmpty())
+        }
 }

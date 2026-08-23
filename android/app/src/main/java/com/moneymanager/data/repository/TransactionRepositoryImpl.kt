@@ -40,22 +40,13 @@ class TransactionRepositoryImpl
             accountId: Long,
             note: String?,
         ): AppResult<Transaction> {
-            if (amount.signum() <= 0) {
-                return fail(AppError.Validation("Amount must be greater than zero"))
-            }
-            if (categoryDao.getById(categoryId) == null) {
-                return fail(AppError.Validation("Category $categoryId does not exist"))
-            }
-            if (accountDao.getById(accountId) == null) {
-                return fail(AppError.Validation("Account $accountId does not exist"))
-            }
+            validate(amount, categoryId, accountId)?.let { return fail(it) }
 
-            val normalized = amount.setScale(2, java.math.RoundingMode.HALF_UP)
             val entity =
                 TransactionEntity(
                     type = TransactionType.EXPENSE,
                     date = date,
-                    amount = normalized,
+                    amount = amount.setScale(2, java.math.RoundingMode.HALF_UP),
                     categoryId = categoryId,
                     accountId = accountId,
                     note = note?.takeIf { it.isNotBlank() },
@@ -63,6 +54,44 @@ class TransactionRepositoryImpl
             val id = transactionDao.insert(entity)
             return entity.copy(id = id).toDomain().asSuccess()
         }
+
+        override suspend fun updateExpense(
+            id: Long,
+            amount: BigDecimal,
+            date: LocalDate,
+            categoryId: Long,
+            accountId: Long,
+            note: String?,
+        ): AppResult<Transaction> {
+            val existing = transactionDao.getById(id) ?: return fail(AppError.NotFound)
+            validate(amount, categoryId, accountId)?.let { return fail(it) }
+
+            val updated =
+                existing.copy(
+                    date = date,
+                    amount = amount.setScale(2, java.math.RoundingMode.HALF_UP),
+                    categoryId = categoryId,
+                    accountId = accountId,
+                    note = note?.takeIf { it.isNotBlank() },
+                )
+            transactionDao.update(updated)
+            return updated.toDomain().asSuccess()
+        }
+
+        /** Shared field validation for add/update; null means valid. */
+        private suspend fun validate(
+            amount: BigDecimal,
+            categoryId: Long,
+            accountId: Long,
+        ): AppError? =
+            when {
+                amount.signum() <= 0 -> AppError.Validation("Amount must be greater than zero")
+                categoryDao.getById(categoryId) == null ->
+                    AppError.Validation("Category $categoryId does not exist")
+                accountDao.getById(accountId) == null ->
+                    AppError.Validation("Account $accountId does not exist")
+                else -> null
+            }
 
         override suspend fun delete(id: Long): AppResult<Unit> {
             val existing = transactionDao.getById(id) ?: return fail(AppError.NotFound)

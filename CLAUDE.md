@@ -41,6 +41,9 @@ Do not leave ruff or mypy failures behind.
 
 - Every new feature starts on a **feature branch created from `main`**. Do the
   development there.
+- Before creating a new branch, **fetch the latest `main`** and branch from it
+  (e.g. `git fetch origin && git checkout -b <branch> origin/main`) so the
+  branch always starts from up-to-date `main`.
 - Only after the feature is **well tested and working** does it go to `main`
   via a **PR review**.
 - **No local merge to `main`, and no direct push to `main`.** `main` is updated

@@ -2,6 +2,7 @@ services:
   money-manager:
     build: .
     image: money-manager
+    container_name: money-manager
     # Must match APP_UID:APP_GID baked into the image so the process can write
     # to the bind-mounted data directory.
     user: "10001:10001"

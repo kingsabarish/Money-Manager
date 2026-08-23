@@ -9,9 +9,9 @@ def _make_category_and_account(client: TestClient) -> tuple[int, int]:
     lunch = client.post(
         "/categories", json={"name": "Lunch", "parent_id": food["id"]}
     ).json()
-    cash = client.post("/account-groups", json={"name": "Cash"}).json()
+    cash = client.post("/accounts", json={"name": "Cash"}).json()
     wallet = client.post(
-        "/accounts", json={"name": "Wallet", "group_id": cash["id"]}
+        "/accounts", json={"name": "Wallet", "parent_id": cash["id"]}
     ).json()
     return lunch["id"], wallet["id"]
 
@@ -62,10 +62,7 @@ def test_list_newest_first(client: TestClient) -> None:
 def test_list_filters(client: TestClient) -> None:
     """The list route filters by account, category and date range."""
     category_id, account_id = _make_category_and_account(client)
-    other_group = client.post("/account-groups", json={"name": "Bank"}).json()
-    other_account = client.post(
-        "/accounts", json={"name": "Checking", "group_id": other_group["id"]}
-    ).json()["id"]
+    other_account = client.post("/accounts", json={"name": "Bank"}).json()["id"]
 
     base = {"amount": "1", "category_id": category_id}
     client.post(

@@ -1,49 +1,38 @@
-"""Schemas for account and account-group endpoints."""
+"""Schemas for account endpoints."""
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class AccountGroupCreate(BaseModel):
-    """Request body for creating an account group."""
-
-    name: str
-
-
-class AccountGroupUpdate(BaseModel):
-    """Request body for updating an account group."""
-
-    name: str | None = None
-
-
 class AccountCreate(BaseModel):
-    """Request body for creating an account within a group."""
+    """Request body for creating an account or sub-account."""
 
     name: str
-    group_id: int
+    parent_id: int | None = None
 
 
 class AccountUpdate(BaseModel):
-    """Request body for updating an account (name and/or group)."""
+    """Request body for updating an account (name only)."""
 
     name: str | None = None
-    group_id: int | None = None
+
+
+class SubaccountRead(BaseModel):
+    """A sub-account in responses."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    parent_id: int | None
 
 
 class AccountRead(BaseModel):
-    """An account in responses."""
+    """A top-level account with its nested sub-accounts."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
-    group_id: int
-
-
-class AccountGroupRead(BaseModel):
-    """An account group with its nested accounts."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    accounts: list[AccountRead] = Field(default=[])
+    parent_id: int | None
+    # Reads from the ORM ``children`` attribute; serialized as ``subaccounts``.
+    subaccounts: list[SubaccountRead] = Field(default=[], validation_alias="children")

@@ -1,6 +1,7 @@
 package com.moneymanager.ui.feature.settings
 
 import android.content.Context
+import android.content.IntentSender
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,9 +13,12 @@ import com.moneymanager.domain.repository.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -48,8 +52,18 @@ class SettingsViewModel
         @ApplicationContext private val context: Context,
         private val settingsRepository: SettingsRepository,
         private val backupRepository: BackupRepository,
+        private val driveBackup: GoogleDriveBackup,
     ) : ViewModel() {
         private val status = MutableStateFlow<BackupStatus>(BackupStatus.Idle)
+
+        private val consentRequestsFlow = MutableSharedFlow<IntentSender>(extraBufferCapacity = 1)
+
+        /** Emits when Drive needs the consent UI launched; retry the last action on RESULT_OK. */
+        val consentRequests: SharedFlow<IntentSender> = consentRequestsFlow.asSharedFlow()
+
+        /** The Drive action awaiting consent, replayed after the user grants it. */
+        private var pendingDriveAction: (suspend () -> DriveResult)? = null
+        private var pendingSuccessMessage: String = ""
 
         val uiState: StateFlow<SettingsUiState> =
             combine(settingsRepository.observe(), status) { settings, status ->
@@ -111,6 +125,52 @@ class SettingsViewModel
                         is AppResult.Success -> BackupStatus.Success("Backup restored")
                         is AppResult.Failure -> BackupStatus.Error(result.error.userMessage())
                     }
+            }
+        }
+
+        fun backupToDrive() = runDriveAction("Backed up to Google Drive") { driveBackup.backup() }
+
+        fun restoreFromDrive() = runDriveAction("Restored from Google Drive") { driveBackup.restore() }
+
+        /** Call after the consent screen returns RESULT_OK to replay the pending action. */
+        fun onConsentGranted() {
+            val action = pendingDriveAction ?: return
+            runDriveAction(pendingSuccessMessage, action)
+        }
+
+        fun onConsentCanceled() {
+            pendingDriveAction = null
+            status.value = BackupStatus.Error("Google sign-in was cancelled")
+        }
+
+        private fun runDriveAction(successMessage: String, action: suspend () -> DriveResult) {
+            pendingDriveAction = action
+            pendingSuccessMessage = successMessage
+            viewModelScope.launch {
+                status.value = BackupStatus.Working
+                when (val result = action()) {
+                    is DriveResult.Success -> {
+                        settingsRepository.setLastBackupAt(System.currentTimeMillis())
+                        pendingDriveAction = null
+                        status.value = BackupStatus.Success(successMessage)
+                    }
+
+                    is DriveResult.NoBackup -> {
+                        pendingDriveAction = null
+                        status.value = BackupStatus.Error("No backup found in Google Drive yet")
+                    }
+
+                    is DriveResult.ConsentRequired -> {
+                        // Keep the pending action; the UI launches consent and calls back.
+                        status.value = BackupStatus.Working
+                        consentRequestsFlow.emit(result.intentSender)
+                    }
+
+                    is DriveResult.Error -> {
+                        pendingDriveAction = null
+                        status.value = BackupStatus.Error(result.message)
+                    }
+                }
             }
         }
 

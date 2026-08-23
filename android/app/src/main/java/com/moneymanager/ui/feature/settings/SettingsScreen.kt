@@ -1,7 +1,9 @@
 package com.moneymanager.ui.feature.settings
 
+import android.app.Activity
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -53,12 +56,32 @@ fun SettingsScreen(
             ActivityResultContracts.OpenDocument(),
         ) { uri -> uri?.let(viewModel::importFrom) }
 
+    val consentLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult(),
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                viewModel.onConsentGranted()
+            } else {
+                viewModel.onConsentCanceled()
+            }
+        }
+
+    // When Drive needs consent, launch its intent; the callback above retries.
+    LaunchedEffect(Unit) {
+        viewModel.consentRequests.collect { intentSender ->
+            consentLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+        }
+    }
+
     SettingsScreenContent(
         state = state,
         onNavigateBack = onNavigateBack,
         onThemeModeChange = viewModel::onThemeModeChange,
         onBackUp = { exportLauncher.launch(viewModel.suggestedFileName) },
         onRestore = { importLauncher.launch(arrayOf("application/json")) },
+        onDriveBackup = viewModel::backupToDrive,
+        onDriveRestore = viewModel::restoreFromDrive,
     )
 }
 
@@ -70,6 +93,8 @@ private fun SettingsScreenContent(
     onThemeModeChange: (ThemeMode) -> Unit,
     onBackUp: () -> Unit,
     onRestore: () -> Unit,
+    onDriveBackup: () -> Unit,
+    onDriveRestore: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -98,6 +123,46 @@ private fun SettingsScreenContent(
                 onBackUp = onBackUp,
                 onRestore = onRestore,
             )
+
+            HorizontalDivider()
+
+            DriveSection(
+                working = state.status is BackupStatus.Working,
+                onDriveBackup = onDriveBackup,
+                onDriveRestore = onDriveRestore,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DriveSection(
+    working: Boolean,
+    onDriveBackup: () -> Unit,
+    onDriveRestore: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle("Google Drive")
+        Text(
+            text =
+                "Back up to your Google account's private app storage. " +
+                    "You'll be asked to sign in the first time.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(
+            onClick = onDriveBackup,
+            enabled = !working,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Back up to Drive")
+        }
+        OutlinedButton(
+            onClick = onDriveRestore,
+            enabled = !working,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Restore from Drive")
         }
     }
 }
@@ -210,6 +275,8 @@ private fun SettingsScreenPreview() {
             onThemeModeChange = {},
             onBackUp = {},
             onRestore = {},
+            onDriveBackup = {},
+            onDriveRestore = {},
         )
     }
 }

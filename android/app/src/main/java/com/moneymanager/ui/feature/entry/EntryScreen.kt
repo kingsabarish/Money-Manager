@@ -37,8 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.moneymanager.domain.model.Account
-import com.moneymanager.domain.model.Category
+import com.moneymanager.ui.components.CategoryPickerField
 import com.moneymanager.ui.util.formatAsDay
 import java.time.Instant
 import java.time.LocalDate
@@ -119,10 +118,10 @@ private fun EntryScreenContent(
 
             DateField(date = state.date, onDateChange = onDateChange)
 
-            LabeledDropdown(
+            CategoryPickerField(
                 label = "Category",
-                selectedLabel = state.selectedCategory?.name.orEmpty(),
-                options = state.categories.map { it.id to it.name },
+                categories = state.categories,
+                selectedId = state.selectedCategoryId,
                 onSelected = onCategorySelected,
             )
 

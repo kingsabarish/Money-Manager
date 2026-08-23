@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Static App Shortcuts (long-press the launcher icon). Structure placeholder;
+    the "Add expense" quick action and any others are added when the entry flow
+    exists.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android" />

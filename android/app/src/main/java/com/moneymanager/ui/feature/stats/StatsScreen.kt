@@ -47,6 +47,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneymanager.ui.components.PieChart
 import com.moneymanager.ui.components.PieSlice
+import com.moneymanager.ui.components.monthSwipe
 import com.moneymanager.ui.theme.ChartPalette
 import com.moneymanager.ui.theme.MoneyManagerTheme
 import com.moneymanager.ui.util.formatAsCurrency
@@ -111,7 +112,8 @@ private fun StatsScreenContent(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    .monthSwipe(onPrevious = onPreviousMonth, onNext = onNextMonth),
         ) {
             PeriodSelector(
                 isMonth = state.isMonth,
@@ -318,7 +320,8 @@ private fun CategoryDetailContent(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding),
+                    .padding(innerPadding)
+                    .monthSwipe(onPrevious = onPreviousMonth, onNext = onNextMonth),
         ) {
             PeriodSelector(
                 isMonth = detail.isMonth,

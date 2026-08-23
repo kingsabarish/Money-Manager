@@ -5,82 +5,117 @@ A personal finance / expense-tracking app.
 ## Project overview
 
 - Purpose: track income, expenses, and budgets.
-- Language: Python.
-- Packaging & runtime: runs as a **Docker container**.
-- Deployment target: a **headless Debian home server PC**. Keep everything
-  compatible with headless Linux (no GUI dependencies, no interactive prompts
-  at runtime).
+- Language: **Kotlin** (native Android app, Jetpack Compose).
+- The app is **on-device only**: a local **Room** database is the single source
+  of truth, with a **Google Drive backup** (export/restore of a JSON snapshot)
+  for durability. There is **no backend / no server dependency at runtime**.
 
-## Architecture & conventions
+## Repository layout
 
-Layout (`src/money_manager/backend/` is the FastAPI app):
+- `android/` — the native Android app (Kotlin, Jetpack Compose). Single-module
+  Gradle project (the `:app` module).
+- Root holds only shared files: `CLAUDE.md`, `README.md`, `.gitignore`.
 
-- `app.py` — `create_app()` factory; register every router here. `lifespan`
-  calls `init_db()` on startup.
-- `db/models/` — SQLAlchemy 2.0 ORM models (`Mapped` / `mapped_column`). Import
-  each new model in `db/models/__init__.py` so `Base.metadata` sees it.
-- `db/base.py` (`Base`) and `db/session.py` (engine, `get_session`, `init_db`).
-- `deps.py` — `SessionDep = Annotated[Session, Depends(get_session)]`. Use it in
-  handlers (avoids ruff `B008`); the dependency param must come **before** any
-  parameter that has a default.
-- `models/` — Pydantic request/response schemas. Read models set
-  `ConfigDict(from_attributes=True)`.
-- `routes/` — one `APIRouter` per resource.
-- `src/scripts/` — standalone test UI: `test_ui.py` (stdlib proxy server) +
-  `index.html`. **The backend serves the API only — it never serves HTML.** Run
-  the UI with `uv run python src/scripts/test_ui.py --backend <backend-url>`.
-- `tests/` — pytest against an in-memory SQLite engine via
-  `app.dependency_overrides` (see `conftest.py`).
+> History: the repo previously carried a decoupled FastAPI `backend/`. It was
+> removed once the app went fully on-device; it still lives in git history if a
+> future web layer ever needs it.
 
-Domain model:
+## Android app architecture & conventions
+
+Layout (`android/` is a single-module Gradle project — the `:app` module):
+
+- Native **Kotlin + Jetpack Compose** (Material 3), organized
+  **package-by-feature** under `app/src/main/java/com/moneymanager/`:
+  `data/{local,repository,backup}`, `domain/{model,repository}`,
+  `ui/{theme,components,navigation,feature/*}`, `widget/`, `di/`. Empty layers
+  are held by `.gitkeep` until filled in.
+- **On-device architecture:** Room is the single source of truth (no server at
+  runtime). The UI depends only on repository **interfaces** in
+  `domain/repository/`; implementations in `data/repository/` map Room entities ↔
+  domain models. `domain/**` has no Android/Room imports; `ui/**` never imports
+  `data/**`. Errors cross the boundary as a sealed `AppResult`, not exceptions.
+
+Domain model & invariants (enforced in the **repository layer**, since there is
+no server to backstop them):
 
 - **Category** and **Account** are each a single **self-referential two-layer**
-  table: top-level rows have `parent_id IS NULL`; children point at a top-level
+  table: top-level rows have `parentId IS NULL`; children point at a top-level
   row. There are **no separate "group" tables**. The two-level depth limit is
-  enforced in the route layer (a child's parent must itself be top-level → 422).
-- Deletes are guarded (409) when a row still has children or is referenced by a
-  transaction.
-- **SQLite gotcha**: `UniqueConstraint(parent_id, name)` does NOT stop duplicate
-  top-level names, because SQLite treats NULLs as distinct. Create routes do an
-  explicit duplicate check for the `parent_id IS NULL` case (→ 409).
-- Only `EXPENSE` transactions are accepted for now (income/transfer → 422); the
-  enum and columns leave room for the rest.
+  enforced in the repository (a child's parent must itself be top-level →
+  `AppError.Validation`).
+- Deletes are guarded (`AppError.Conflict`) when a row still has children or is
+  referenced by a transaction.
+- The self-referential FK uses `onDelete = RESTRICT`. Room enables
+  `PRAGMA foreign_keys = ON`, and SQLite enforces RESTRICT **immediately, per
+  row** — so any bulk clear (e.g. restore) must delete child rows before their
+  top-level parents, or a single `DELETE FROM …` aborts the moment it removes a
+  parent that still has a child.
+- **SQLite gotcha**: a unique index on `(parentId, name)` does NOT stop duplicate
+  top-level names, because SQLite treats NULLs as distinct. The repository does
+  an explicit duplicate check for the `parentId IS NULL` case (→ `Conflict`).
+- Only `EXPENSE` transactions are wired up end to end for now; `INCOME` /
+  `TRANSFER` exist in the enum so the schema has room to grow.
 
 Persistence:
 
-- SQLite at `sqlite:////var/lib/money-manager/money_manager.db` (four slashes =
-  absolute path), on a mounted Docker volume so data survives restarts/rebuilds.
-- `init_db()` uses `create_all()`, which does **not** alter existing tables — so
-  **any schema change requires recreating the DB volume** (a data reset) until
-  Alembic migrations exist. Call this out before doing it.
+- Room database on-device; amounts stored as **TEXT** (`BigDecimal` ↔ String
+  converter — never REAL/Double), dates as ISO `yyyy-MM-dd`.
+- Room `exportSchema = true` writes schema JSON to `app/schemas/` (committed) so
+  migrations are possible later.
 
-## Python environment
+Stack & tooling:
 
-- Use **`uv`** for all Python management (dependencies, virtualenv, running).
-- Install **`ruff`** and **`mypy`** as dev dependencies via `uv`.
-- Full local gate: `uv run ruff check . && uv run ruff format --check . &&
-  uv run mypy && uv run pytest -q`.
+- Stack: Room (local DB = source of truth), DataStore (settings), Hilt (DI),
+  Navigation Compose (type-safe routes), kotlinx.serialization (JSON backup
+  snapshot), Glance (widget), WorkManager (background backup). Backup target is
+  Google Drive **appDataFolder**; Retrofit/OkHttp are available and may be used
+  for the Drive REST API.
+- Versions are centralized in `android/gradle/libs.versions.toml`. Pins: AGP
+  **9.3.0**, Gradle **9.5.0**, Kotlin **2.4.10**, KSP **2.3.11** (KSP uses
+  *decoupled* versioning — not `<kotlin>-<ksp>`), Glance **1.1.1**,
+  compileSdk/targetSdk **37**, minSdk **26**, JVM target **17**.
+- AGP 9 provides **built-in Kotlin**: do **not** apply the
+  `org.jetbrains.kotlin.android` plugin (it errors). The compose, serialization,
+  and KSP plugins still apply on top; Kotlin compiler options go in the
+  `kotlin { compilerOptions { } }` DSL (jvmTarget defaults to
+  `compileOptions.targetCompatibility`).
+- Config cache is temporarily **off** (`org.gradle.configuration-cache=false`):
+  AGP 9.3's `ProcessNavigationXmlTask` fails to serialize into it. Re-enable once
+  on an AGP version that fixes it.
+- **Dynamic color** (Material You) only on API 31+ — guard with
+  `Build.VERSION.SDK_INT >= Build.VERSION_CODES.S`, else fall back to the static
+  scheme (crashes on 26–30 without the guard).
 
-## Code quality (required for every change)
+## Android environment
 
-For **any** code you add or update, before considering it done you MUST:
-
-1. Run **`ruff`** (lint + format) and fix all reported issues.
-2. Run **`mypy`** and fix all reported type issues.
-
-Do not leave ruff or mypy failures behind.
-
-## Building & testing (Docker via WSL)
-
-- Docker is installed inside **WSL** on the development PC (not native Windows).
-- Whenever we need to test something we built, **build and run the container
-  through WSL** and test it there.
+- Built **SDK-only, without Android Studio** — the Android command-line tools +
+  a JDK, driven from VS Code / a terminal, deployed to a **physical device**
+  over USB/Wi-Fi debugging (no emulator). Full install steps live in
+  `android/README.md`.
+- Toolchain on the dev PC: a **JDK** (via `JAVA_HOME`) and the **Android SDK**
+  at `C:\Android\Sdk` (via `ANDROID_HOME` / `ANDROID_SDK_ROOT`), with
+  `cmdline-tools\latest\bin` and `platform-tools` on `PATH`. Installed SDK
+  packages include **platforms;android-37** and **build-tools;37.0.0** (Compose
+  BOM `2026.08.00` pulls Compose 1.12 and requires compileSdk 37).
+- The build's JVM **target** is 17 (AGP 9.3 baseline); the JDK that *runs*
+  Gradle may be newer (this machine uses JDK 26 — verified working with Gradle
+  9.5.0).
+- Build & run **natively on Windows** (no WSL/Docker): `./gradlew installDebug`
+  from `android/` builds and installs to the connected phone.
+- `android/local.properties` (holds `sdk.dir`) is **machine-local and
+  gitignored** — never commit it. Every other `android/` config is committed.
+- Gradle runs via the wrapper (`./gradlew` from `android/`). The wrapper files
+  (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` +
+  `.properties`) are **committed** — clone and run, no `gradle wrapper` step.
 
 ## Workflow & git
 
 - **I review every change.** After you make a change, stop and let me review it.
 - **Do NOT commit or push** unless I explicitly tell you to. Only after I say
   "commit" / "push" may you run those git commands.
+- **Modular commits.** When I ask you to commit, do NOT dump everything into one
+  commit. Split the changes into reasonable, logically-grouped commits (e.g.
+  restructure vs. feature vs. docs) each with its own clear message.
 
 ### Branching & PR flow
 

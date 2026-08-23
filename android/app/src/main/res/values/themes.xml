@@ -1,0 +1,7 @@
+<resources>
+    <!--
+        Placeholder Activity theme. The real Material 3 theming lives in Compose
+        (ui/theme/); this only styles the window before Compose draws.
+    -->
+    <style name="Theme.MoneyManager" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

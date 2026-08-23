@@ -1,22 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-
-# Tooling caches
-.ruff_cache/
-.mypy_cache/
-.pytest_cache/
-
-# Environments / secrets
-.env
-
-# Data
-*.db
-*.sqlite
-*.sqlite3
-
 # OS / editor
 .DS_Store
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+*.apk
+*.aab
+*.keystore
+!android/gradle/wrapper/gradle-wrapper.jar

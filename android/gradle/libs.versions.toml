@@ -1,0 +1,123 @@
+# Gradle version catalog — single source of truth for dependency versions.
+#
+# NOTE: pinned to the current stable releases as of Aug 2026. The core/brittle
+# ones (AGP, Gradle, Kotlin, Compose BOM, Hilt, KSP) are verified; run Android
+# Studio's upgrade check on first sync to confirm the smaller androidx libs and
+# bump the KSP suffix if it differs.
+
+[versions]
+agp = "9.3.0"
+kotlin = "2.4.10"
+# KSP uses decoupled versioning (own version, not "<kotlin>-<ksp>"). 2.3.x (KSP2)
+# supports a range of Kotlin releases; the Kotlin docs pair 2.4.10 with KSP 2.3.10+.
+ksp = "2.3.11"
+hilt = "2.60.1"
+androidxHilt = "1.2.0"
+
+composeBom = "2026.08.00"
+coreKtx = "1.17.0"
+lifecycle = "2.9.0"
+activityCompose = "1.10.1"
+navigationCompose = "2.9.0"
+datastore = "1.1.7"
+room = "2.8.0"
+retrofit = "3.0.0"
+okhttp = "5.0.0"
+kotlinxSerialization = "1.9.0"
+coroutines = "1.10.2"
+glance = "1.1.1"
+workManager = "2.10.1"
+playServicesAuth = "21.3.0"
+# Seed-color → full Material 3 scheme generation (Google's material-color-utilities
+# port). 5.0.0 targets Kotlin 2.4 / Compose 1.11+, compatible with our pins.
+materialKolor = "5.0.0"
+
+junit = "4.13.2"
+androidxJunit = "1.2.1"
+espresso = "3.6.1"
+
+[libraries]
+# Core / lifecycle
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+
+# Compose (versions come from the BOM)
+androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+
+# DataStore (settings: server base URL, etc.)
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+
+# Networking
+retrofit-core = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+retrofit-kotlinx-serialization = { group = "com.squareup.retrofit2", name = "converter-kotlinx-serialization", version.ref = "retrofit" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+
+# Local persistence (offline cache)
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+
+# Dependency injection
+hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
+hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }
+androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "androidxHilt" }
+androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref = "androidxHilt" }
+androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "androidxHilt" }
+
+# Dynamic theming from an arbitrary seed color (full Material 3 tonal scheme)
+material-kolor = { group = "com.materialkolor", name = "material-kolor", version.ref = "materialKolor" }
+
+# Home-screen widget
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
+androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }
+
+# Background sync
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
+
+# Google Drive backup: Google Identity Services authorization (Drive appdata
+# scope + access token); Drive itself is called over its REST v3 API with OkHttp.
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+
+# Testing
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
+
+[bundles]
+compose = [
+    "androidx-compose-ui",
+    "androidx-compose-ui-graphics",
+    "androidx-compose-ui-tooling-preview",
+    "androidx-compose-material3",
+]
+retrofit = [
+    "retrofit-core",
+    "retrofit-kotlinx-serialization",
+    "okhttp-logging-interceptor",
+    "kotlinx-serialization-json",
+]
+room = [
+    "androidx-room-runtime",
+    "androidx-room-ktx",
+]
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+# No kotlin-android plugin: AGP 9.0+ ships built-in Kotlin support. The `kotlin`
+# version below still drives the Kotlin compiler plugins (compose, serialization).
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

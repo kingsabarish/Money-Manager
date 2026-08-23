@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon foreground: a bold white ascending trend line with an
+     up-right arrowhead — a modern "growth" mark, centered in the safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Ascending trend line. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M26,74 L46,54 L60,64 L82,36" />
+    <!-- Up-right arrowhead at the top of the line. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M84,34 L66,34 L84,52 Z" />
+</vector>

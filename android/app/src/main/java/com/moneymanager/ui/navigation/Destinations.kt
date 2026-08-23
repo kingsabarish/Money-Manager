@@ -9,6 +9,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object Home
 
+@Serializable
+data object Stats
+
 /** Add a new expense, or edit an existing one when [transactionId] is set. */
 @Serializable
 data class Entry(val transactionId: Long? = null)

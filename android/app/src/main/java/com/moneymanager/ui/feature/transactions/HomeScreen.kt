@@ -17,7 +17,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -40,7 +39,6 @@ import java.time.LocalDate
  */
 @Composable
 fun HomeScreen(
-    onNavigateToSettings: () -> Unit,
     onAddExpense: () -> Unit,
     onEditExpense: (Long) -> Unit,
     viewModel: TransactionsViewModel = hiltViewModel(),
@@ -48,7 +46,6 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     HomeScreenContent(
         state = uiState,
-        onNavigateToSettings = onNavigateToSettings,
         onAddExpense = onAddExpense,
         onEditExpense = onEditExpense,
     )
@@ -58,7 +55,6 @@ fun HomeScreen(
 @Composable
 private fun HomeScreenContent(
     state: HomeUiState,
-    onNavigateToSettings: () -> Unit,
     onAddExpense: () -> Unit,
     onEditExpense: (Long) -> Unit,
 ) {
@@ -66,9 +62,6 @@ private fun HomeScreenContent(
         topBar = {
             TopAppBar(
                 title = { Text("Money Manager") },
-                actions = {
-                    TextButton(onClick = onNavigateToSettings) { Text("Settings") }
-                },
             )
         },
         floatingActionButton = {
@@ -177,7 +170,6 @@ private fun HomeScreenPreview() {
         Surface {
             HomeScreenContent(
                 state = HomeUiState(loading = false, sections = sample),
-                onNavigateToSettings = {},
                 onAddExpense = {},
                 onEditExpense = {},
             )

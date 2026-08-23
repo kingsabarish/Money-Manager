@@ -32,7 +32,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,7 +63,6 @@ import com.moneymanager.ui.theme.MoneyManagerTheme
  */
 @Composable
 fun SettingsScreen(
-    onNavigateBack: () -> Unit,
     onNavigateToManage: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -100,7 +98,6 @@ fun SettingsScreen(
 
     SettingsScreenContent(
         state = state,
-        onNavigateBack = onNavigateBack,
         onNavigateToManage = onNavigateToManage,
         onThemeModeChange = viewModel::onThemeModeChange,
         onDynamicColorChange = viewModel::onDynamicColorChange,
@@ -116,7 +113,6 @@ fun SettingsScreen(
 @Composable
 private fun SettingsScreenContent(
     state: SettingsUiState,
-    onNavigateBack: () -> Unit,
     onNavigateToManage: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onDynamicColorChange: (Boolean) -> Unit,
@@ -130,9 +126,6 @@ private fun SettingsScreenContent(
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },
-                navigationIcon = {
-                    TextButton(onClick = onNavigateBack) { Text("Back") }
-                },
             )
         },
     ) { innerPadding ->
@@ -482,7 +475,6 @@ private fun SettingsScreenPreview() {
                     lastBackupAtEpochMs = null,
                     status = BackupStatus.Idle,
                 ),
-            onNavigateBack = {},
             onNavigateToManage = {},
             onThemeModeChange = {},
             onDynamicColorChange = {},

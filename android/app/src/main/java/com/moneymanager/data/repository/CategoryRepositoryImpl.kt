@@ -14,9 +14,9 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 /**
- * Room-backed [CategoryRepository]. Enforces the invariants that the backend
- * enforced in its route layer (two-level depth, duplicate name per parent,
- * guarded delete), since on-device there is no server behind it.
+ * Room-backed [CategoryRepository]. Enforces the domain invariants (two-level
+ * depth, duplicate name per parent, guarded delete) here in the repository
+ * layer, since on-device there is no server behind it to backstop them.
  */
 class CategoryRepositoryImpl
     @Inject
@@ -57,7 +57,7 @@ class CategoryRepositoryImpl
 
             // Name must be unique within the same parent. SQLite treats NULL
             // parentIds as distinct, so a unique index can't cover the top-level
-            // case — check explicitly, matching the backend.
+            // case — check explicitly.
             val duplicates =
                 if (parentId == null) {
                     dao.countTopLevelByName(trimmed)

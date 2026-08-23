@@ -11,7 +11,7 @@ sealed interface AppResult<out T> {
 }
 
 /**
- * Domain-level error kinds. Mirrors the backend's HTTP semantics without any
+ * Domain-level error kinds, modeled on familiar HTTP semantics but without any
  * HTTP coupling: [NotFound] ~ 404, [Conflict] ~ 409, [Validation] ~ 422.
  */
 sealed interface AppError {

@@ -65,6 +65,9 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
+    // Dynamic Material 3 color scheme from a user-picked seed color
+    implementation(libs.material.kolor)
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 

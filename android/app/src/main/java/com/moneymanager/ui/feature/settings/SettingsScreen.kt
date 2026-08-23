@@ -8,10 +8,12 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,21 +30,31 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.moneymanager.domain.model.AppTheme
 import com.moneymanager.domain.model.ThemeMode
+import com.moneymanager.ui.components.ColorPickerDialog
+import com.moneymanager.ui.components.toOpaqueArgb
+import com.moneymanager.ui.theme.ThemePresetSeeds
 import com.moneymanager.ui.theme.MoneyManagerTheme
 
 /**
@@ -91,7 +103,8 @@ fun SettingsScreen(
         onNavigateBack = onNavigateBack,
         onNavigateToManage = onNavigateToManage,
         onThemeModeChange = viewModel::onThemeModeChange,
-        onAppThemeChange = viewModel::onAppThemeChange,
+        onDynamicColorChange = viewModel::onDynamicColorChange,
+        onSeedColorChange = viewModel::onSeedColorChange,
         onBackUp = { exportLauncher.launch(viewModel.suggestedFileName) },
         onRestore = { importLauncher.launch(arrayOf("application/json")) },
         onDriveBackup = viewModel::backupToDrive,
@@ -106,7 +119,8 @@ private fun SettingsScreenContent(
     onNavigateBack: () -> Unit,
     onNavigateToManage: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
-    onAppThemeChange: (AppTheme) -> Unit,
+    onDynamicColorChange: (Boolean) -> Unit,
+    onSeedColorChange: (Int) -> Unit,
     onBackUp: () -> Unit,
     onRestore: () -> Unit,
     onDriveBackup: () -> Unit,
@@ -133,9 +147,11 @@ private fun SettingsScreenContent(
         ) {
             ThemeSection(
                 selectedMode = state.themeMode,
-                selectedTheme = state.appTheme,
+                dynamicColor = state.dynamicColor,
+                seedColorArgb = state.seedColorArgb,
                 onModeChange = onThemeModeChange,
-                onThemeChange = onAppThemeChange,
+                onDynamicColorChange = onDynamicColorChange,
+                onSeedColorChange = onSeedColorChange,
             )
 
             HorizontalDivider()
@@ -220,10 +236,14 @@ private fun ManageSection(onManage: () -> Unit) {
 @Composable
 private fun ThemeSection(
     selectedMode: ThemeMode,
-    selectedTheme: AppTheme,
+    dynamicColor: Boolean,
+    seedColorArgb: Int,
     onModeChange: (ThemeMode) -> Unit,
-    onThemeChange: (AppTheme) -> Unit,
+    onDynamicColorChange: (Boolean) -> Unit,
+    onSeedColorChange: (Int) -> Unit,
 ) {
+    var showPicker by remember { mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("Appearance")
 
@@ -245,44 +265,128 @@ private fun ThemeSection(
             }
         }
 
+        // "Match wallpaper" (Material You) only exists on Android 12+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Match my wallpaper",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange)
+            }
+        }
+
         Text(
-            text = "Color theme",
+            text = "Accent color",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.selectableGroup(),
-        ) {
-            AppTheme.entries.forEach { theme ->
-                // "Match wallpaper" (dynamic color) only exists on Android 12+.
-                if (theme == AppTheme.DYNAMIC &&
-                    Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-                ) {
-                    return@forEach
-                }
-                FilterChip(
-                    selected = theme == selectedTheme,
-                    onClick = { onThemeChange(theme) },
-                    label = { Text(theme.label()) },
-                    leadingIcon = { ThemeSwatch(theme) },
+        val pickerColor = Color(seedColorArgb)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ThemePresetSeeds.forEach { seed ->
+                val argb = seed.toArgb()
+                ColorDot(
+                    color = seed,
+                    selected = !dynamicColor && argb == seedColorArgb,
+                    onClick = { onSeedColorChange(argb) },
                 )
             }
+            // Custom color: opens the full RGB picker, seeded with the current color.
+            CustomColorDot(
+                color = pickerColor,
+                selected = !dynamicColor && ThemePresetSeeds.none { it.toArgb() == seedColorArgb },
+                onClick = { showPicker = true },
+            )
         }
+    }
+
+    if (showPicker) {
+        ColorPickerDialog(
+            initial = Color(seedColorArgb),
+            onDismiss = { showPicker = false },
+            onConfirm = { color ->
+                onSeedColorChange(color.toOpaqueArgb())
+                showPicker = false
+            },
+        )
     }
 }
 
-/** A small color dot previewing a palette's accent; omitted for the dynamic option. */
+private val swatchSize = 40.dp
+
+/** A selectable circular color swatch. */
 @Composable
-private fun ThemeSwatch(theme: AppTheme) {
-    val color = theme.swatchColor() ?: return
+private fun ColorDot(color: Color, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier =
             Modifier
-                .size(16.dp)
-                .background(color, CircleShape)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                .size(swatchSize)
+                .clip(CircleShape)
+                .background(color)
+                .border(
+                    width = if (selected) 3.dp else 1.dp,
+                    color =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        },
+                    shape = CircleShape,
+                )
+                .clickable(onClick = onClick),
     )
+}
+
+/**
+ * The "custom color" swatch: a rainbow ring signalling the full RGB picker, with
+ * the currently-chosen custom color filling the center when one is active.
+ */
+@Composable
+private fun CustomColorDot(color: Color, selected: Boolean, onClick: () -> Unit) {
+    val rainbow =
+        remember {
+            Brush.sweepGradient(
+                listOf(
+                    Color.Red, Color.Yellow, Color.Green,
+                    Color.Cyan, Color.Blue, Color.Magenta, Color.Red,
+                ),
+            )
+        }
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            Modifier
+                .size(swatchSize)
+                .clip(CircleShape)
+                .background(rainbow)
+                .border(
+                    width = if (selected) 3.dp else 1.dp,
+                    color =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        },
+                    shape = CircleShape,
+                )
+                .clickable(onClick = onClick),
+    ) {
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(color)
+                        .border(1.dp, Color.White, CircleShape),
+            )
+        }
+    }
 }
 
 @Composable
@@ -355,25 +459,6 @@ private fun ThemeMode.label(): String =
         ThemeMode.DARK -> "Dark"
     }
 
-private fun AppTheme.label(): String =
-    when (this) {
-        AppTheme.DYNAMIC -> "Match wallpaper"
-        AppTheme.GREEN -> "Green"
-        AppTheme.BLUE -> "Blue"
-        AppTheme.PURPLE -> "Purple"
-        AppTheme.ORANGE -> "Orange"
-    }
-
-/** Representative accent for the palette's preview dot; null = no fixed color (dynamic). */
-private fun AppTheme.swatchColor(): Color? =
-    when (this) {
-        AppTheme.DYNAMIC -> null
-        AppTheme.GREEN -> Color(0xFF2E6B4F)
-        AppTheme.BLUE -> Color(0xFF265DA8)
-        AppTheme.PURPLE -> Color(0xFF6750A4)
-        AppTheme.ORANGE -> Color(0xFF8F4C00)
-    }
-
 private fun lastBackupLabel(epochMs: Long?): String =
     if (epochMs == null) {
         "No backup yet"
@@ -394,14 +479,14 @@ private fun SettingsScreenPreview() {
             state =
                 SettingsUiState(
                     themeMode = ThemeMode.SYSTEM,
-                    appTheme = AppTheme.GREEN,
                     lastBackupAtEpochMs = null,
                     status = BackupStatus.Idle,
                 ),
             onNavigateBack = {},
             onNavigateToManage = {},
             onThemeModeChange = {},
-            onAppThemeChange = {},
+            onDynamicColorChange = {},
+            onSeedColorChange = {},
             onBackUp = {},
             onRestore = {},
             onDriveBackup = {},

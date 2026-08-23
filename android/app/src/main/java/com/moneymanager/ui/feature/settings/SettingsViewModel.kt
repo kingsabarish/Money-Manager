@@ -7,7 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.moneymanager.domain.model.AppError
 import com.moneymanager.domain.model.AppResult
-import com.moneymanager.domain.model.AppTheme
+import com.moneymanager.domain.model.AppSettings
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.domain.repository.BackupRepository
 import com.moneymanager.domain.repository.SettingsRepository
@@ -48,7 +48,8 @@ enum class BackupSource {
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val appTheme: AppTheme = AppTheme.GREEN,
+    val dynamicColor: Boolean = false,
+    val seedColorArgb: Int = AppSettings.DEFAULT_SEED_COLOR,
     val lastBackupAtEpochMs: Long? = null,
     val status: BackupStatus = BackupStatus.Idle,
     val statusSource: BackupSource = BackupSource.FILE,
@@ -83,7 +84,8 @@ class SettingsViewModel
             ) { settings, status, statusSource ->
                 SettingsUiState(
                     themeMode = settings.themeMode,
-                    appTheme = settings.appTheme,
+                    dynamicColor = settings.dynamicColor,
+                    seedColorArgb = settings.seedColorArgb,
                     lastBackupAtEpochMs = settings.lastBackupAtEpochMs,
                     status = status,
                     statusSource = statusSource,
@@ -102,8 +104,16 @@ class SettingsViewModel
             viewModelScope.launch { settingsRepository.setThemeMode(mode) }
         }
 
-        fun onAppThemeChange(theme: AppTheme) {
-            viewModelScope.launch { settingsRepository.setAppTheme(theme) }
+        fun onDynamicColorChange(enabled: Boolean) {
+            viewModelScope.launch { settingsRepository.setDynamicColor(enabled) }
+        }
+
+        fun onSeedColorChange(argb: Int) {
+            viewModelScope.launch {
+                // Choosing a specific color turns off wallpaper matching.
+                settingsRepository.setDynamicColor(false)
+                settingsRepository.setSeedColor(argb)
+            }
         }
 
         /** Export the database to the user-picked [uri] (from CreateDocument). */

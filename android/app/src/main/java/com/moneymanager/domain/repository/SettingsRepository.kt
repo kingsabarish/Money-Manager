@@ -1,7 +1,6 @@
 package com.moneymanager.domain.repository
 
 import com.moneymanager.domain.model.AppSettings
-import com.moneymanager.domain.model.AppTheme
 import com.moneymanager.domain.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
 
@@ -11,7 +10,11 @@ interface SettingsRepository {
 
     suspend fun setThemeMode(mode: ThemeMode)
 
-    suspend fun setAppTheme(theme: AppTheme)
+    /** Toggle Material You wallpaper matching (Android 12+). */
+    suspend fun setDynamicColor(enabled: Boolean)
+
+    /** Set the accent seed color (ARGB int) the palette is generated from. */
+    suspend fun setSeedColor(argb: Int)
 
     suspend fun setLastBackupAt(epochMs: Long)
 }

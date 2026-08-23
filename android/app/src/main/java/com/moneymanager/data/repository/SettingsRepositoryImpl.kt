@@ -2,11 +2,12 @@ package com.moneymanager.data.repository
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.moneymanager.domain.model.AppSettings
-import com.moneymanager.domain.model.AppTheme
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
@@ -29,10 +30,8 @@ class SettingsRepositoryImpl
                         prefs[KEY_THEME_MODE]
                             ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                             ?: ThemeMode.SYSTEM,
-                    appTheme =
-                        prefs[KEY_APP_THEME]
-                            ?.let { runCatching { AppTheme.valueOf(it) }.getOrNull() }
-                            ?: AppTheme.GREEN,
+                    dynamicColor = prefs[KEY_DYNAMIC_COLOR] ?: false,
+                    seedColorArgb = prefs[KEY_SEED_COLOR] ?: AppSettings.DEFAULT_SEED_COLOR,
                     lastBackupAtEpochMs = prefs[KEY_LAST_BACKUP_AT],
                 )
             }
@@ -41,8 +40,12 @@ class SettingsRepositoryImpl
             dataStore.edit { it[KEY_THEME_MODE] = mode.name }
         }
 
-        override suspend fun setAppTheme(theme: AppTheme) {
-            dataStore.edit { it[KEY_APP_THEME] = theme.name }
+        override suspend fun setDynamicColor(enabled: Boolean) {
+            dataStore.edit { it[KEY_DYNAMIC_COLOR] = enabled }
+        }
+
+        override suspend fun setSeedColor(argb: Int) {
+            dataStore.edit { it[KEY_SEED_COLOR] = argb }
         }
 
         override suspend fun setLastBackupAt(epochMs: Long) {
@@ -51,7 +54,8 @@ class SettingsRepositoryImpl
 
         private companion object {
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
-            val KEY_APP_THEME = stringPreferencesKey("app_theme")
+            val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+            val KEY_SEED_COLOR = intPreferencesKey("seed_color")
             val KEY_LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
         }
     }

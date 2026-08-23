@@ -2,160 +2,41 @@ package com.moneymanager.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Money Manager brand palette — a green-forward "finance" scheme with a teal
-// secondary and a warm gold tertiary accent. A complete set of Material 3 color
-// roles (not just the accents) so surfaces, containers, and outlines read as an
-// intentional theme rather than defaulting to plain white/black. Used whenever
-// dynamic (wallpaper) color is off or unavailable (API < 31).
+/** Brand green — the default accent seed the Material 3 palette is generated from. */
+val BrandGreen = Color(0xFF2E6B4F)
 
-// --- Light ---
-val md_light_primary = Color(0xFF2E6B4F)
-val md_light_onPrimary = Color(0xFFFFFFFF)
-val md_light_primaryContainer = Color(0xFFB1F1C7)
-val md_light_onPrimaryContainer = Color(0xFF00210F)
-val md_light_secondary = Color(0xFF00696E)
-val md_light_onSecondary = Color(0xFFFFFFFF)
-val md_light_secondaryContainer = Color(0xFF6FF6FE)
-val md_light_onSecondaryContainer = Color(0xFF002022)
-val md_light_tertiary = Color(0xFF8A5100)
-val md_light_onTertiary = Color(0xFFFFFFFF)
-val md_light_tertiaryContainer = Color(0xFFFFDCBE)
-val md_light_onTertiaryContainer = Color(0xFF2C1600)
-val md_light_error = Color(0xFFBA1A1A)
-val md_light_onError = Color(0xFFFFFFFF)
-val md_light_errorContainer = Color(0xFFFFDAD6)
-val md_light_onErrorContainer = Color(0xFF410002)
-val md_light_background = Color(0xFFF6FBF4)
-val md_light_onBackground = Color(0xFF191C19)
-val md_light_surface = Color(0xFFF6FBF4)
-val md_light_onSurface = Color(0xFF191C19)
-val md_light_surfaceVariant = Color(0xFFDCE5DB)
-val md_light_onSurfaceVariant = Color(0xFF404942)
-val md_light_outline = Color(0xFF707972)
-val md_light_outlineVariant = Color(0xFFC0C9BF)
-val md_light_surfaceContainerLowest = Color(0xFFFFFFFF)
-val md_light_surfaceContainerLow = Color(0xFFF0F5EE)
-val md_light_surfaceContainer = Color(0xFFEAF0E8)
-val md_light_surfaceContainerHigh = Color(0xFFE5EAE3)
-val md_light_surfaceContainerHighest = Color(0xFFDFE4DD)
+/**
+ * Quick-pick accent seeds offered in Settings above the full color picker.
+ * Each is just a seed; the whole scheme is derived from it.
+ */
+val ThemePresetSeeds: List<Color> =
+    listOf(
+        BrandGreen,
+        Color(0xFF265DA8), // blue
+        Color(0xFF6750A4), // purple
+        Color(0xFFB3261E), // red
+        Color(0xFF8F4C00), // orange
+        Color(0xFF00696E), // teal
+        Color(0xFFB5006B), // magenta
+        Color(0xFF4B5D00), // olive
+    )
 
-// Alternative accent palettes (Blue / Purple / Orange). Each defines only the
-// three accent families (primary, secondary, tertiary + their containers); they
-// are layered over the shared green-tinted neutral surfaces and error roles via
-// ColorScheme.copy(...) in Theme.kt, so surfaces stay consistent and only the
-// accent hue changes.
-
-// --- Blue: light ---
-val blue_light_primary = Color(0xFF265DA8)
-val blue_light_onPrimary = Color(0xFFFFFFFF)
-val blue_light_primaryContainer = Color(0xFFD6E3FF)
-val blue_light_onPrimaryContainer = Color(0xFF001B3D)
-val blue_light_secondary = Color(0xFF545F71)
-val blue_light_onSecondary = Color(0xFFFFFFFF)
-val blue_light_secondaryContainer = Color(0xFFD8E3F8)
-val blue_light_onSecondaryContainer = Color(0xFF111C2B)
-val blue_light_tertiary = Color(0xFF6E5676)
-val blue_light_onTertiary = Color(0xFFFFFFFF)
-val blue_light_tertiaryContainer = Color(0xFFF7D8FF)
-val blue_light_onTertiaryContainer = Color(0xFF271430)
-
-// --- Blue: dark ---
-val blue_dark_primary = Color(0xFFA8C8FF)
-val blue_dark_onPrimary = Color(0xFF00315D)
-val blue_dark_primaryContainer = Color(0xFF004883)
-val blue_dark_onPrimaryContainer = Color(0xFFD6E3FF)
-val blue_dark_secondary = Color(0xFFBCC7DC)
-val blue_dark_onSecondary = Color(0xFF273141)
-val blue_dark_secondaryContainer = Color(0xFF3D4758)
-val blue_dark_onSecondaryContainer = Color(0xFFD8E3F8)
-val blue_dark_tertiary = Color(0xFFDBBCE3)
-val blue_dark_onTertiary = Color(0xFF3D2846)
-val blue_dark_tertiaryContainer = Color(0xFF553F5D)
-val blue_dark_onTertiaryContainer = Color(0xFFF7D8FF)
-
-// --- Purple: light ---
-val purple_light_primary = Color(0xFF6750A4)
-val purple_light_onPrimary = Color(0xFFFFFFFF)
-val purple_light_primaryContainer = Color(0xFFEADDFF)
-val purple_light_onPrimaryContainer = Color(0xFF21005D)
-val purple_light_secondary = Color(0xFF625B71)
-val purple_light_onSecondary = Color(0xFFFFFFFF)
-val purple_light_secondaryContainer = Color(0xFFE8DEF8)
-val purple_light_onSecondaryContainer = Color(0xFF1D192B)
-val purple_light_tertiary = Color(0xFF7D5260)
-val purple_light_onTertiary = Color(0xFFFFFFFF)
-val purple_light_tertiaryContainer = Color(0xFFFFD8E4)
-val purple_light_onTertiaryContainer = Color(0xFF31111D)
-
-// --- Purple: dark ---
-val purple_dark_primary = Color(0xFFD0BCFF)
-val purple_dark_onPrimary = Color(0xFF381E72)
-val purple_dark_primaryContainer = Color(0xFF4F378B)
-val purple_dark_onPrimaryContainer = Color(0xFFEADDFF)
-val purple_dark_secondary = Color(0xFFCCC2DC)
-val purple_dark_onSecondary = Color(0xFF332D41)
-val purple_dark_secondaryContainer = Color(0xFF4A4458)
-val purple_dark_onSecondaryContainer = Color(0xFFE8DEF8)
-val purple_dark_tertiary = Color(0xFFEFB8C8)
-val purple_dark_onTertiary = Color(0xFF492532)
-val purple_dark_tertiaryContainer = Color(0xFF633B48)
-val purple_dark_onTertiaryContainer = Color(0xFFFFD8E4)
-
-// --- Orange: light ---
-val orange_light_primary = Color(0xFF8F4C00)
-val orange_light_onPrimary = Color(0xFFFFFFFF)
-val orange_light_primaryContainer = Color(0xFFFFDCC2)
-val orange_light_onPrimaryContainer = Color(0xFF2E1500)
-val orange_light_secondary = Color(0xFF755846)
-val orange_light_onSecondary = Color(0xFFFFFFFF)
-val orange_light_secondaryContainer = Color(0xFFFFDCC2)
-val orange_light_onSecondaryContainer = Color(0xFF2B1708)
-val orange_light_tertiary = Color(0xFF5F6236)
-val orange_light_onTertiary = Color(0xFFFFFFFF)
-val orange_light_tertiaryContainer = Color(0xFFE5E8B0)
-val orange_light_onTertiaryContainer = Color(0xFF1C1D00)
-
-// --- Orange: dark ---
-val orange_dark_primary = Color(0xFFFFB77C)
-val orange_dark_onPrimary = Color(0xFF4C2700)
-val orange_dark_primaryContainer = Color(0xFF6D3900)
-val orange_dark_onPrimaryContainer = Color(0xFFFFDCC2)
-val orange_dark_secondary = Color(0xFFE5BFA8)
-val orange_dark_onSecondary = Color(0xFF422B1B)
-val orange_dark_secondaryContainer = Color(0xFF5B4130)
-val orange_dark_onSecondaryContainer = Color(0xFFFFDCC2)
-val orange_dark_tertiary = Color(0xFFC9CC96)
-val orange_dark_onTertiary = Color(0xFF32330C)
-val orange_dark_tertiaryContainer = Color(0xFF484A20)
-val orange_dark_onTertiaryContainer = Color(0xFFE5E8B0)
-
-// --- Dark ---
-val md_dark_primary = Color(0xFF96D5AC)
-val md_dark_onPrimary = Color(0xFF00391F)
-val md_dark_primaryContainer = Color(0xFF12522F)
-val md_dark_onPrimaryContainer = Color(0xFFB1F1C7)
-val md_dark_secondary = Color(0xFF4CD9E1)
-val md_dark_onSecondary = Color(0xFF00373A)
-val md_dark_secondaryContainer = Color(0xFF004F53)
-val md_dark_onSecondaryContainer = Color(0xFF6FF6FE)
-val md_dark_tertiary = Color(0xFFFFB870)
-val md_dark_onTertiary = Color(0xFF4A2800)
-val md_dark_tertiaryContainer = Color(0xFF693C00)
-val md_dark_onTertiaryContainer = Color(0xFFFFDCBE)
-val md_dark_error = Color(0xFFFFB4AB)
-val md_dark_onError = Color(0xFF690005)
-val md_dark_errorContainer = Color(0xFF93000A)
-val md_dark_onErrorContainer = Color(0xFFFFDAD6)
-val md_dark_background = Color(0xFF101510)
-val md_dark_onBackground = Color(0xFFE0E4DB)
-val md_dark_surface = Color(0xFF101510)
-val md_dark_onSurface = Color(0xFFE0E4DB)
-val md_dark_surfaceVariant = Color(0xFF404942)
-val md_dark_onSurfaceVariant = Color(0xFFC0C9BF)
-val md_dark_outline = Color(0xFF8A938B)
-val md_dark_outlineVariant = Color(0xFF404942)
-val md_dark_surfaceContainerLowest = Color(0xFF0B0F0B)
-val md_dark_surfaceContainerLow = Color(0xFF191C19)
-val md_dark_surfaceContainer = Color(0xFF1D211C)
-val md_dark_surfaceContainerHigh = Color(0xFF272B26)
-val md_dark_surfaceContainerHighest = Color(0xFF323631)
+/**
+ * Distinct, evenly-spread colors for the stats chart slices/legend. Chosen for
+ * legibility on both light and dark surfaces; cycled if there are more slices.
+ */
+val ChartPalette: List<Color> =
+    listOf(
+        Color(0xFFEF6C6C),
+        Color(0xFFF3A24B),
+        Color(0xFFF6D046),
+        Color(0xFF8FCF52),
+        Color(0xFF4FB06E),
+        Color(0xFF4FC3C7),
+        Color(0xFF5B9BF0),
+        Color(0xFF9B7DE0),
+        Color(0xFFD887D6),
+        Color(0xFFB0885E),
+        Color(0xFF7E8CA0),
+        Color(0xFFE0739E),
+    )

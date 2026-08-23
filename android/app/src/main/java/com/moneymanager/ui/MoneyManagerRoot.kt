@@ -7,6 +7,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneymanager.domain.model.ThemeMode
@@ -29,7 +30,11 @@ fun MoneyManagerRoot(viewModel: MoneyManagerRootViewModel = hiltViewModel()) {
             ThemeMode.DARK -> true
         }
 
-    MoneyManagerTheme(appTheme = prefs.appTheme, darkTheme = darkTheme) {
+    MoneyManagerTheme(
+        seedColor = Color(prefs.seedColorArgb),
+        dynamicColor = prefs.dynamicColor,
+        darkTheme = darkTheme,
+    ) {
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,

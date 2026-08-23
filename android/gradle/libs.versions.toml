@@ -28,6 +28,9 @@ coroutines = "1.10.2"
 glance = "1.1.1"
 workManager = "2.10.1"
 playServicesAuth = "21.3.0"
+# Seed-color → full Material 3 scheme generation (Google's material-color-utilities
+# port). 5.0.0 targets Kotlin 2.4 / Compose 1.11+, compatible with our pins.
+materialKolor = "5.0.0"
 
 junit = "4.13.2"
 androidxJunit = "1.2.1"
@@ -72,6 +75,9 @@ hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.r
 androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "androidxHilt" }
 androidx-hilt-work = { group = "androidx.hilt", name = "hilt-work", version.ref = "androidxHilt" }
 androidx-hilt-compiler = { group = "androidx.hilt", name = "hilt-compiler", version.ref = "androidxHilt" }
+
+# Dynamic theming from an arbitrary seed color (full Material 3 tonal scheme)
+material-kolor = { group = "com.materialkolor", name = "material-kolor", version.ref = "materialKolor" }
 
 # Home-screen widget
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }

@@ -13,8 +13,10 @@ venv/
 # Environments / secrets
 .env
 
-# Data (local SQLite dir created at runtime from the relative default URL)
-data/
+# Data (local SQLite dir created at runtime from the relative default URL).
+# Anchored so it does not match the Android `data/` source package.
+/data/
+backend/data/
 *.db
 *.sqlite
 *.sqlite3

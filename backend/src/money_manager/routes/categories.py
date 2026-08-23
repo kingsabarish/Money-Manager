@@ -5,10 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from money_manager.backend.db.models.category import Category
-from money_manager.backend.db.models.transaction import Transaction
-from money_manager.backend.deps import SessionDep
-from money_manager.backend.models.category import (
+from money_manager.db.models.category import Category
+from money_manager.db.models.transaction import Transaction
+from money_manager.deps import SessionDep
+from money_manager.models.category import (
     CategoryCreate,
     CategoryRead,
     CategoryUpdate,

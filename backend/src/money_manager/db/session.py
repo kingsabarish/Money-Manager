@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from money_manager.backend.db.base import Base
+from money_manager.db.base import Base
 
 DEFAULT_DATABASE_URL = "sqlite:///./data/money_manager.db"
 
@@ -65,7 +65,7 @@ def init_db(bind: Engine | None = None) -> None:
     """
     # Import models for their side effect of registering on Base.metadata.
     # Done lazily here to avoid an import cycle at module load time.
-    from money_manager.backend.db import models  # noqa: F401
+    from money_manager.db import models  # noqa: F401
 
     Base.metadata.create_all(bind=bind or engine)
 

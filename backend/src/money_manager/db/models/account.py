@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy import ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from money_manager.backend.db.base import Base
+from money_manager.db.base import Base
 
 
 class Account(Base):

@@ -1,7 +1,7 @@
 """Database layer: engine, sessions, and the ORM declarative base."""
 
-from money_manager.backend.db.base import Base
-from money_manager.backend.db.session import (
+from money_manager.db.base import Base
+from money_manager.db.session import (
     create_db_engine,
     get_database_url,
     get_session,

@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from money_manager.backend.db.models.enums import TransactionType
+from money_manager.db.models.enums import TransactionType
 
 # Positive monetary amount with at most 2 decimal places.
 Amount = Field(gt=0, max_digits=14, decimal_places=2)

@@ -10,12 +10,12 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from money_manager.backend.db.models.account import Account
-from money_manager.backend.db.models.category import Category
-from money_manager.backend.db.models.enums import TransactionType
-from money_manager.backend.db.models.transaction import Transaction
-from money_manager.backend.deps import SessionDep
-from money_manager.backend.models.transaction import (
+from money_manager.db.models.account import Account
+from money_manager.db.models.category import Category
+from money_manager.db.models.enums import TransactionType
+from money_manager.db.models.transaction import Transaction
+from money_manager.deps import SessionDep
+from money_manager.models.transaction import (
     TransactionCreate,
     TransactionRead,
     TransactionUpdate,

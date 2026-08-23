@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from money_manager import __version__
-from money_manager.backend.models.health import HealthResponse
+from money_manager.models.health import HealthResponse
 
 router = APIRouter(tags=["health"])
 

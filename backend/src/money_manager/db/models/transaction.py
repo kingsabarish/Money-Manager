@@ -9,8 +9,8 @@ from sqlalchemy import Date, DateTime, ForeignKey, Numeric, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
-from money_manager.backend.db.base import Base
-from money_manager.backend.db.models.enums import TransactionType
+from money_manager.db.base import Base
+from money_manager.db.models.enums import TransactionType
 
 
 def _now() -> dt.datetime:

@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from money_manager.backend.db import create_db_engine, get_database_url, init_db
+from money_manager.db import create_db_engine, get_database_url, init_db
 
 
 def test_default_database_url_is_local_sqlite(

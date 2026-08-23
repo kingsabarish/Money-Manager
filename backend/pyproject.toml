@@ -31,7 +31,7 @@ packages = ["src/money_manager"]
 [tool.ruff]
 line-length = 88
 target-version = "py314"
-src = ["src", "tests"]
+src = ["src", "scripts", "tests"]
 
 [tool.ruff.lint]
 select = [
@@ -47,7 +47,7 @@ select = [
 [tool.mypy]
 python_version = "3.14"
 strict = true
-files = ["src", "tests"]
+files = ["src", "scripts", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

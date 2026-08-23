@@ -8,8 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from money_manager.backend.app import create_app
-from money_manager.backend.db.session import get_session, init_db
+from money_manager.app import create_app
+from money_manager.db.session import get_session, init_db
 
 
 @pytest.fixture

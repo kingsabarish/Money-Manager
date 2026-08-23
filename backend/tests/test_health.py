@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 
 from money_manager import __version__
-from money_manager.backend.app import create_app
+from money_manager.app import create_app
 
 
 def test_health_ok() -> None:

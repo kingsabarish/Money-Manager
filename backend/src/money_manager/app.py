@@ -6,8 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from money_manager import __version__
-from money_manager.backend.db import init_db
-from money_manager.backend.routes import accounts, categories, health, transactions
+from money_manager.db import init_db
+from money_manager.routes import accounts, categories, health, transactions
 
 
 @asynccontextmanager

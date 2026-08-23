@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from money_manager.backend.db.models.enums import TransactionType
+from money_manager.db.models.enums import TransactionType
 
 
 class CategoryCreate(BaseModel):

@@ -63,6 +63,10 @@ def init_db(bind: Engine | None = None) -> None:
 
     Safe to call on every startup: existing tables are left untouched.
     """
+    # Import models for their side effect of registering on Base.metadata.
+    # Done lazily here to avoid an import cycle at module load time.
+    from money_manager.backend.db import models  # noqa: F401
+
     Base.metadata.create_all(bind=bind or engine)
 
 

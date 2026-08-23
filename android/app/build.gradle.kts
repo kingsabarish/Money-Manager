@@ -92,6 +92,10 @@ dependencies {
     // Background sync
     implementation(libs.androidx.work.runtime.ktx)
 
+    // Google Drive backup (Google Identity Services auth + Drive REST over OkHttp)
+    implementation(libs.play.services.auth)
+    implementation(libs.okhttp)
+
     // Testing
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -10,4 +10,7 @@ import kotlinx.serialization.Serializable
 data object Home
 
 @Serializable
+data object Entry
+
+@Serializable
 data object Settings

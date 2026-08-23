@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.moneymanager.ui.feature.entry.EntryScreen
 import com.moneymanager.ui.feature.settings.SettingsScreen
 import com.moneymanager.ui.feature.transactions.HomeScreen
 
@@ -16,7 +17,16 @@ fun MoneyManagerNavHost() {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = Home) {
         composable<Home> {
-            HomeScreen(onNavigateToSettings = { navController.navigate(Settings) })
+            HomeScreen(
+                onNavigateToSettings = { navController.navigate(Settings) },
+                onAddExpense = { navController.navigate(Entry) },
+            )
+        }
+        composable<Entry> {
+            EntryScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() },
+            )
         }
         composable<Settings> {
             SettingsScreen(onNavigateBack = { navController.popBackStack() })

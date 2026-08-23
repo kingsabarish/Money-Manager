@@ -13,10 +13,23 @@ venv/
 # Environments / secrets
 .env
 
-# Data
+# Data (local SQLite dir created at runtime from the relative default URL)
+data/
 *.db
 *.sqlite
 *.sqlite3
 
 # OS / editor
 .DS_Store
+
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+*.apk
+*.aab
+*.keystore
+!android/gradle/wrapper/gradle-wrapper.jar

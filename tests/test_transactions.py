@@ -59,6 +59,43 @@ def test_list_newest_first(client: TestClient) -> None:
     assert dates == ["2026-06-01", "2026-01-01"]
 
 
+def test_list_filters(client: TestClient) -> None:
+    """The list route filters by account, category and date range."""
+    category_id, account_id = _make_category_and_account(client)
+    other_group = client.post("/account-groups", json={"name": "Bank"}).json()
+    other_account = client.post(
+        "/accounts", json={"name": "Checking", "group_id": other_group["id"]}
+    ).json()["id"]
+
+    base = {"amount": "1", "category_id": category_id}
+    client.post(
+        "/transactions",
+        json={**base, "account_id": account_id, "date": "2026-01-15"},
+    )
+    client.post(
+        "/transactions",
+        json={**base, "account_id": account_id, "date": "2026-06-15"},
+    )
+    client.post(
+        "/transactions",
+        json={**base, "account_id": other_account, "date": "2026-06-15"},
+    )
+
+    by_account = client.get("/transactions", params={"account_id": account_id}).json()
+    assert len(by_account) == 2
+
+    in_range = client.get(
+        "/transactions",
+        params={"date_from": "2026-06-01", "date_to": "2026-06-30"},
+    ).json()
+    assert len(in_range) == 2
+    assert all(t["date"] == "2026-06-15" for t in in_range)
+
+    by_type = client.get("/transactions", params={"type": "expense"}).json()
+    assert len(by_type) == 3
+    assert client.get("/transactions", params={"type": "income"}).json() == []
+
+
 def test_update_and_delete(client: TestClient) -> None:
     """An entry can be updated and then deleted."""
     category_id, account_id = _make_category_and_account(client)

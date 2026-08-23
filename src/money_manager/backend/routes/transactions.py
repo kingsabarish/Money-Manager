@@ -50,9 +50,29 @@ def _validate_account(session: Session, account_id: int) -> None:
 @router.get("", response_model=list[TransactionRead])
 def list_transactions(
     session: SessionDep,
+    type: TransactionType | None = None,
+    category_id: int | None = None,
+    account_id: int | None = None,
+    date_from: date_cls | None = None,
+    date_to: date_cls | None = None,
 ) -> list[Transaction]:
-    """List entries, newest first."""
-    stmt = select(Transaction).order_by(Transaction.date.desc(), Transaction.id.desc())
+    """List entries, newest first, optionally filtered.
+
+    Filters combine with AND: ``type``, ``category_id``, ``account_id`` and an
+    inclusive ``date_from``/``date_to`` range.
+    """
+    stmt = select(Transaction)
+    if type is not None:
+        stmt = stmt.where(Transaction.type == type)
+    if category_id is not None:
+        stmt = stmt.where(Transaction.category_id == category_id)
+    if account_id is not None:
+        stmt = stmt.where(Transaction.account_id == account_id)
+    if date_from is not None:
+        stmt = stmt.where(Transaction.date >= date_from)
+    if date_to is not None:
+        stmt = stmt.where(Transaction.date <= date_to)
+    stmt = stmt.order_by(Transaction.date.desc(), Transaction.id.desc())
     return list(session.scalars(stmt))
 
 

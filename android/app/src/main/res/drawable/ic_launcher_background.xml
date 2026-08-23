@@ -1,15 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive-icon background: brand green with a soft lighter highlight for depth. -->
+<!-- Adaptive-icon background: a modern diagonal emerald-to-teal gradient with a
+     soft corner highlight for depth. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#2E6B4F"
-        android:pathData="M0,0 H108 V108 H0 Z" />
+    <path android:pathData="M0,0 H108 V108 H0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108"
+                android:startColor="#33C27A"
+                android:endColor="#125E52" />
+        </aapt:attr>
+    </path>
+    <!-- Soft highlight in the upper-left for a subtle sense of depth. -->
     <path
         android:fillColor="#FFFFFF"
-        android:fillAlpha="0.08"
-        android:pathData="M30,20 m-56,0 a56,56 0 1,0 112,0 a56,56 0 1,0 -112,0 Z" />
+        android:fillAlpha="0.10"
+        android:pathData="M24,8 m-48,0 a48,48 0 1,0 96,0 a48,48 0 1,0 -96,0 Z" />
 </vector>

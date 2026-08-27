@@ -86,6 +86,36 @@ Stack & tooling:
   `Build.VERSION.SDK_INT >= Build.VERSION_CODES.S`, else fall back to the static
   scheme (crashes on 26–30 without the guard).
 
+## Google Drive backup
+
+- Auth uses **Google Identity Services** (`com.google.android.gms.auth.api.identity
+  .AuthorizationClient`) with the `drive.appdata` scope, then raw Drive REST v3
+  (OkHttp) — no Firebase, no Google Sign-In button. The OAuth client ID lives in
+  `app/src/main/res/values/strings.xml` as `default_web_client_id`; GIS reads it
+  automatically (there is **no** `setServerClientId` call).
+- **OAuth consent gotcha:** with an *External* app in *Testing* mode, the Google
+  account **must be added as a Test User** in the consent screen's *Audience* tab,
+  and the debug signing SHA-1 must be registered in the Android OAuth client.
+  Without the test user, `authorize()` fails with `12500` ("Google sign in
+  failed"). The 12500 is **not** a client-id-type issue (an Android-type client ID
+  in `default_web_client_id` works once the test user exists).
+- Backups are stored in Drive's hidden **`appDataFolder`** (file
+  `money-manager-backup.json`), which is **invisible in the normal Drive UI**.
+- **Consent must be granted once** via the manual *Back up to Drive* action before
+  scheduled backups can run; `BackupWorker` treats `ConsentRequired` as a skip (it
+  does not auto-retry), so a periodic run with no token just no-ops.
+- **Periodic backup** (`BackupFrequency` MANUAL/DAILY/WEEKLY/MONTHLY, stored in
+  `AppSettings.backupFrequency`): `BackupScheduler` enqueues an immediate
+  `OneTimeWorkRequest` + a `PeriodicWorkRequest` (interval 1/7/30 days, initial
+  delay = interval, constraints `NetworkType.CONNECTED` + `RequiresBatteryNotLow`).
+  `BackupScheduler.arm()` (called at app startup from `MoneyManagerApp`) re-arms
+  only the periodic job; `schedule()` (called when the user changes frequency)
+  also fires the immediate one. MANUAL cancels both.
+- **Hilt 2.60.1 removed `@HiltWorker`**, so `BackupWorker` obtains its deps via a
+  Hilt `@EntryPoint` (`BackupWorkerEntryPoint`, `@InstallIn(SingletonComponent::
+  class)`) rather than constructor injection. Do **not** switch to
+  `HiltWorkerFactory`/`Configuration.Provider` unless the Hilt version is bumped.
+
 ## Android environment
 
 - Built **SDK-only, without Android Studio** — the Android command-line tools +
@@ -107,6 +137,14 @@ Stack & tooling:
 - Gradle runs via the wrapper (`./gradlew` from `android/`). The wrapper files
   (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` +
   `.properties`) are **committed** — clone and run, no `gradle wrapper` step.
+- **This dev machine's toolchain** (non-standard paths, captured for
+  reproducibility): the JDK lives at `C:\Android\jdk\...` (a write-permission
+  workaround for `C:\Program Files\Java`), the Android SDK at `C:\Android\Sdk`,
+  and the debug keystore (`C:\Users\sabar\.android\debug.keystore`, alias
+  `androiddebugkey`) has SHA-1
+  `A4:CD:61:74:60:D2:33:AC:0B:70:75:6A:F2:34:56:53:B6:22:72:94`. `local.properties`
+  points `sdk.dir` at `C:\Android\Sdk`. The OAuth client ID in
+  `default_web_client_id` is an **Android**-type client.
 
 ## Workflow & git
 

@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -74,10 +76,19 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
 
     val currentDetail = detail
     if (currentDetail != null) {
-        BackHandler { viewModel.clearSelection() }
+        val onBack = {
+            if (detail?.selectedSubCategoryIds?.isNotEmpty() == true) {
+                viewModel.clearSubCategory()
+            } else {
+                viewModel.clearSelection()
+            }
+        }
+        BackHandler { onBack() }
         CategoryDetailContent(
             detail = currentDetail,
-            onBack = viewModel::clearSelection,
+            onBack = onBack,
+            onSelectSubCategory = viewModel::selectSubCategory,
+            onClearSubCategory = viewModel::clearSubCategory,
             onPreviousMonth = viewModel::previousMonth,
             onNextMonth = viewModel::nextMonth,
             onThisMonth = viewModel::thisMonth,
@@ -301,6 +312,8 @@ private fun LegendRow(slice: CategorySlice, color: Color, onClick: () -> Unit) {
 private fun CategoryDetailContent(
     detail: CategoryDetailUiState,
     onBack: () -> Unit,
+    onSelectSubCategory: (Long) -> Unit,
+    onClearSubCategory: () -> Unit,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onThisMonth: () -> Unit,
@@ -333,8 +346,16 @@ private fun CategoryDetailContent(
                 onCustomRange = onCustomRange,
             )
 
-            if (detail.isEmpty) {
-                EmptyPeriod()
+            if (detail.transactions.isEmpty()) {
+                if (detail.selectedSubCategoryIds.isNotEmpty()) {
+                    val subNames =
+                        detail.breakdown
+                            .filter { it.categoryId in detail.selectedSubCategoryIds }
+                            .joinToString(", ") { it.name }
+                    FilteredEmpty(subNames, onClearSubCategory)
+                } else {
+                    EmptyPeriod()
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -361,12 +382,35 @@ private fun CategoryDetailContent(
                             SectionHeader("Breakdown")
                         }
                         items(detail.breakdown, key = { "b-${it.categoryId}" }) { sub ->
-                            BreakdownRow(sub)
+                            BreakdownRow(
+                                sub = sub,
+                                selected = sub.categoryId in detail.selectedSubCategoryIds,
+                                onClick = { onSelectSubCategory(sub.categoryId) },
+                            )
                         }
                     }
 
                     item(key = "txn-header") {
-                        SectionHeader("Transactions")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val subNames =
+                                detail.breakdown
+                                    .filter { it.categoryId in detail.selectedSubCategoryIds }
+                                    .joinToString(", ") { it.name }
+                            Text(
+                                text =
+                                    if (subNames.isNotEmpty()) {
+                                        "Transactions · $subNames"
+                                    } else {
+                                        "Transactions"
+                                    },
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 8.dp).weight(1f),
+                            )
+                            if (subNames.isNotEmpty()) {
+                                TextButton(onClick = onClearSubCategory) { Text("Show all") }
+                            }
+                        }
                     }
                     items(detail.transactions, key = { it.id }) { row ->
                         DetailTransactionItem(row)
@@ -389,9 +433,45 @@ private fun SectionHeader(text: String) {
 }
 
 @Composable
-private fun BreakdownRow(sub: SubcategorySlice) {
+private fun FilteredEmpty(
+    name: String,
+    onClear: () -> Unit,
+) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(24.dp),
+        ) {
+            Text(
+                text =
+                    if (name.isNotEmpty()) {
+                        "No transactions for $name in this period."
+                    } else {
+                        "No transactions in this period."
+                    },
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onClear) { Text("Show all") }
+        }
+    }
+}
+
+@Composable
+private fun BreakdownRow(
+    sub: SubcategorySlice,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                .clickable(onClick = onClick)
+                .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(
@@ -510,11 +590,14 @@ private fun CategoryDetailPreview() {
                             ),
                         transactions =
                             listOf(
-                                DetailTransactionRow(1, LocalDate.of(2026, 8, 20), "Groceries", "Weekly shop", BigDecimal("80.00")),
-                                DetailTransactionRow(2, LocalDate.of(2026, 8, 18), "Dining", null, BigDecimal("40.00")),
+                                DetailTransactionRow(1, LocalDate.of(2026, 8, 20), 10, "Groceries", "Weekly shop", BigDecimal("80.00")),
+                                DetailTransactionRow(2, LocalDate.of(2026, 8, 18), 11, "Dining", null, BigDecimal("40.00")),
                             ),
+                        selectedSubCategoryIds = emptySet(),
                     ),
                 onBack = {},
+                onSelectSubCategory = {},
+                onClearSubCategory = {},
                 onPreviousMonth = {},
                 onNextMonth = {},
                 onThisMonth = {},

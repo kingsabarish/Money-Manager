@@ -77,6 +77,7 @@ data class SubcategorySlice(
 data class DetailTransactionRow(
     val id: Long,
     val date: LocalDate,
+    val subCategoryId: Long,
     val categoryName: String,
     val note: String?,
     val amount: BigDecimal,
@@ -97,6 +98,8 @@ data class CategoryDetailUiState(
     val total: BigDecimal,
     val breakdown: List<SubcategorySlice>,
     val transactions: List<DetailTransactionRow>,
+    /** Subcategories filtering the transactions (empty = show all). */
+    val selectedSubCategoryIds: Set<Long> = emptySet(),
 ) {
     val isEmpty: Boolean get() = transactions.isEmpty()
 }
@@ -118,6 +121,9 @@ class StatsViewModel
         /** The top-level category the user drilled into, or null for the chart view. */
         private val selectedCategoryId = MutableStateFlow<Long?>(null)
 
+        /** Subcategories currently filtering the drill-down (empty = all). */
+        private val selectedSubCategoryIds = MutableStateFlow<Set<Long>>(emptySet())
+
         val uiState: StateFlow<StatsUiState> =
             combine(
                 transactionRepository.observeAll(),
@@ -138,8 +144,9 @@ class StatsViewModel
                 categoryRepository.observeAll(),
                 period,
                 selectedCategoryId,
-            ) { transactions, categories, selected, categoryId ->
-                categoryId?.let { buildDetail(transactions, categories, selected, it) }
+                selectedSubCategoryIds,
+            ) { transactions, categories, selected, categoryId, subIds ->
+                categoryId?.let { buildDetail(transactions, categories, selected, it, subIds) }
             }.stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
@@ -149,11 +156,26 @@ class StatsViewModel
         /** Drill into a top-level category's transaction listing. */
         fun selectCategory(categoryId: Long) {
             selectedCategoryId.value = categoryId
+            selectedSubCategoryIds.value = emptySet()
+        }
+
+        /** Toggle a subcategory in the drill-down filter (multi-select). */
+        fun selectSubCategory(subId: Long) {
+            selectedSubCategoryIds.value =
+                selectedSubCategoryIds.value.toMutableSet().apply {
+                    if (contains(subId)) remove(subId) else add(subId)
+                }
+        }
+
+        /** Stop filtering by subcategory and show all transactions again. */
+        fun clearSubCategory() {
+            selectedSubCategoryIds.value = emptySet()
         }
 
         /** Return from the drill-down to the chart. */
         fun clearSelection() {
             selectedCategoryId.value = null
+            selectedSubCategoryIds.value = emptySet()
         }
 
         /** Step to the previous month; a custom range snaps to its start month first. */
@@ -233,6 +255,7 @@ class StatsViewModel
             categories: List<Category>,
             selected: StatsPeriod,
             categoryId: Long,
+            selectedSubIds: Set<Long>,
         ): CategoryDetailUiState? {
             val start = selected.rangeStart
             val end = selected.rangeEnd
@@ -275,11 +298,20 @@ class StatsViewModel
                         DetailTransactionRow(
                             id = it.id,
                             date = it.date,
+                            subCategoryId = it.categoryId,
                             categoryName = nameOf[it.categoryId] ?: "Unknown",
                             note = it.note,
                             amount = it.amount,
                         )
                     }
+
+            // When subcategories are selected, show only their transactions in place.
+            val visibleRows =
+                if (selectedSubIds.isNotEmpty()) {
+                    rows.filter { it.subCategoryId in selectedSubIds }
+                } else {
+                    rows
+                }
 
             return CategoryDetailUiState(
                 categoryId = categoryId,
@@ -289,7 +321,8 @@ class StatsViewModel
                 end = end,
                 total = total,
                 breakdown = breakdown,
-                transactions = rows,
+                transactions = visibleRows,
+                selectedSubCategoryIds = selectedSubIds,
             )
         }
     }

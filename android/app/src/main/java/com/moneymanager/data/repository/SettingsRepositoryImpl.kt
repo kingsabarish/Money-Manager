@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.moneymanager.domain.model.AppSettings
+import com.moneymanager.domain.model.BackupFrequency
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +34,10 @@ class SettingsRepositoryImpl
                     dynamicColor = prefs[KEY_DYNAMIC_COLOR] ?: false,
                     seedColorArgb = prefs[KEY_SEED_COLOR] ?: AppSettings.DEFAULT_SEED_COLOR,
                     lastBackupAtEpochMs = prefs[KEY_LAST_BACKUP_AT],
+                    backupFrequency =
+                        prefs[KEY_BACKUP_FREQUENCY]
+                            ?.let { runCatching { BackupFrequency.valueOf(it) }.getOrNull() }
+                            ?: BackupFrequency.MANUAL,
                 )
             }
 
@@ -52,10 +57,19 @@ class SettingsRepositoryImpl
             dataStore.edit { it[KEY_LAST_BACKUP_AT] = epochMs }
         }
 
+        override suspend fun clearLastBackupAt() {
+            dataStore.edit { it.remove(KEY_LAST_BACKUP_AT) }
+        }
+
+        override suspend fun setBackupFrequency(frequency: BackupFrequency) {
+            dataStore.edit { it[KEY_BACKUP_FREQUENCY] = frequency.name }
+        }
+
         private companion object {
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
             val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
             val KEY_SEED_COLOR = intPreferencesKey("seed_color")
             val KEY_LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
+            val KEY_BACKUP_FREQUENCY = stringPreferencesKey("backup_frequency")
         }
     }

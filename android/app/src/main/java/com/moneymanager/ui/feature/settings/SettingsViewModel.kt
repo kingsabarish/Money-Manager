@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.moneymanager.domain.model.AppError
 import com.moneymanager.domain.model.AppResult
 import com.moneymanager.domain.model.AppSettings
+import com.moneymanager.domain.model.BackupFrequency
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.domain.repository.BackupRepository
 import com.moneymanager.domain.repository.SettingsRepository
@@ -53,6 +54,8 @@ data class SettingsUiState(
     val lastBackupAtEpochMs: Long? = null,
     val status: BackupStatus = BackupStatus.Idle,
     val statusSource: BackupSource = BackupSource.FILE,
+    val backupFrequency: BackupFrequency = BackupFrequency.MANUAL,
+    val driveRestoreOptions: List<BackupEntry>? = null,
 )
 
 @HiltViewModel
@@ -63,9 +66,11 @@ class SettingsViewModel
         private val settingsRepository: SettingsRepository,
         private val backupRepository: BackupRepository,
         private val driveBackup: GoogleDriveBackup,
+        private val backupScheduler: BackupScheduler,
     ) : ViewModel() {
         private val status = MutableStateFlow<BackupStatus>(BackupStatus.Idle)
         private val statusSource = MutableStateFlow(BackupSource.FILE)
+        private val driveRestoreOptions = MutableStateFlow<List<BackupEntry>?>(null)
 
         private val consentRequestsFlow = MutableSharedFlow<IntentSender>(extraBufferCapacity = 1)
 
@@ -81,7 +86,8 @@ class SettingsViewModel
                 settingsRepository.observe(),
                 status,
                 statusSource,
-            ) { settings, status, statusSource ->
+                driveRestoreOptions,
+            ) { settings, status, statusSource, restoreOptions ->
                 SettingsUiState(
                     themeMode = settings.themeMode,
                     dynamicColor = settings.dynamicColor,
@@ -89,6 +95,8 @@ class SettingsViewModel
                     lastBackupAtEpochMs = settings.lastBackupAtEpochMs,
                     status = status,
                     statusSource = statusSource,
+                    backupFrequency = settings.backupFrequency,
+                    driveRestoreOptions = restoreOptions,
                 )
             }.stateIn(
                 scope = viewModelScope,
@@ -106,6 +114,14 @@ class SettingsViewModel
 
         fun onDynamicColorChange(enabled: Boolean) {
             viewModelScope.launch { settingsRepository.setDynamicColor(enabled) }
+        }
+
+        /** Persist the chosen backup frequency and (re)schedule the periodic job. */
+        fun setBackupFrequency(frequency: BackupFrequency) {
+            viewModelScope.launch {
+                settingsRepository.setBackupFrequency(frequency)
+                backupScheduler.schedule(frequency)
+            }
         }
 
         fun onSeedColorChange(argb: Int) {
@@ -162,12 +178,35 @@ class SettingsViewModel
 
         fun backupToDrive() = runDriveAction("Backed up to Google Drive") { driveBackup.backup() }
 
-        fun restoreFromDrive() = runDriveAction("Restored from Google Drive") { driveBackup.restore() }
+        fun restoreFromDrive() =
+            runDriveAction(
+                "Restored from Google Drive",
+                updatesLastBackupAt = false,
+            ) { driveBackup.listBackups() }
+
+        /** Restore a specific timestamped backup chosen in the picker. */
+        fun restoreFromDriveEntry(fileId: String) {
+            driveRestoreOptions.value = null
+            runDriveAction("Restored from Google Drive", updatesLastBackupAt = true) {
+                driveBackup.restore(fileId)
+            }
+        }
+
+        fun dismissRestorePicker() {
+            driveRestoreOptions.value = null
+        }
+
+        fun deleteFromDrive() =
+            runDriveAction(
+                "Deleted from Google Drive",
+                treatNoBackupAsSuccess = true,
+                updatesLastBackupAt = false,
+            ) { driveBackup.delete() }
 
         /** Call after the consent screen returns RESULT_OK to replay the pending action. */
         fun onConsentGranted() {
             val action = pendingDriveAction ?: return
-            runDriveAction(pendingSuccessMessage, action)
+            runDriveAction(pendingSuccessMessage, action = action)
         }
 
         fun onConsentCanceled() {
@@ -176,7 +215,12 @@ class SettingsViewModel
             status.value = BackupStatus.Error("Google sign-in was cancelled")
         }
 
-        private fun runDriveAction(successMessage: String, action: suspend () -> DriveResult) {
+        private fun runDriveAction(
+            successMessage: String,
+            treatNoBackupAsSuccess: Boolean = false,
+            updatesLastBackupAt: Boolean = true,
+            action: suspend () -> DriveResult,
+        ) {
             pendingDriveAction = action
             pendingSuccessMessage = successMessage
             viewModelScope.launch {
@@ -184,20 +228,35 @@ class SettingsViewModel
                 status.value = BackupStatus.Working
                 when (val result = action()) {
                     is DriveResult.Success -> {
-                        settingsRepository.setLastBackupAt(System.currentTimeMillis())
+                        if (updatesLastBackupAt) {
+                            settingsRepository.setLastBackupAt(System.currentTimeMillis())
+                        } else {
+                            settingsRepository.clearLastBackupAt()
+                        }
                         pendingDriveAction = null
                         status.value = BackupStatus.Success(successMessage)
                     }
 
                     is DriveResult.NoBackup -> {
                         pendingDriveAction = null
-                        status.value = BackupStatus.Error("No backup found in Google Drive yet")
+                        status.value =
+                            if (treatNoBackupAsSuccess) {
+                                BackupStatus.Success(successMessage)
+                            } else {
+                                BackupStatus.Error("No backup found in Google Drive yet")
+                            }
                     }
 
                     is DriveResult.ConsentRequired -> {
                         // Keep the pending action; the UI launches consent and calls back.
                         status.value = BackupStatus.Working
                         consentRequestsFlow.emit(result.intentSender)
+                    }
+
+                    is DriveResult.BackupsAvailable -> {
+                        pendingDriveAction = null
+                        driveRestoreOptions.value = result.entries
+                        status.value = BackupStatus.Idle
                     }
 
                     is DriveResult.Error -> {

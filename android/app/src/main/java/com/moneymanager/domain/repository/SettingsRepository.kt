@@ -1,6 +1,7 @@
 package com.moneymanager.domain.repository
 
 import com.moneymanager.domain.model.AppSettings
+import com.moneymanager.domain.model.BackupFrequency
 import com.moneymanager.domain.model.ThemeMode
 import kotlinx.coroutines.flow.Flow
 
@@ -17,4 +18,10 @@ interface SettingsRepository {
     suspend fun setSeedColor(argb: Int)
 
     suspend fun setLastBackupAt(epochMs: Long)
+
+    /** Forget the last-backup timestamp (e.g. after the backup is deleted). */
+    suspend fun clearLastBackupAt()
+
+    /** Choose how often the app backs up to Google Drive in the background. */
+    suspend fun setBackupFrequency(frequency: BackupFrequency)
 }

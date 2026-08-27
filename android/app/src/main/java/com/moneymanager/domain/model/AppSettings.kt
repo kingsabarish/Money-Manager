@@ -17,6 +17,7 @@ data class AppSettings(
     val dynamicColor: Boolean = false,
     val seedColorArgb: Int = DEFAULT_SEED_COLOR,
     val lastBackupAtEpochMs: Long? = null,
+    val backupFrequency: BackupFrequency = BackupFrequency.MANUAL,
 ) {
     companion object {
         /** Brand green — the default accent seed on a fresh install. */

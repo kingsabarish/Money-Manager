@@ -22,14 +22,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -50,6 +57,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.moneymanager.domain.model.BackupFrequency
+import java.text.DateFormat
+import java.util.Date
 import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.ui.components.ColorPickerDialog
 import com.moneymanager.ui.components.toOpaqueArgb
@@ -67,6 +77,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     val exportLauncher =
         rememberLauncherForActivityResult(
@@ -106,7 +118,42 @@ fun SettingsScreen(
         onRestore = { importLauncher.launch(arrayOf("application/json")) },
         onDriveBackup = viewModel::backupToDrive,
         onDriveRestore = viewModel::restoreFromDrive,
+        onDriveDelete = { showDeleteConfirm = true },
+        selectedFrequency = state.backupFrequency,
+        onFrequencyChange = viewModel::setBackupFrequency,
     )
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Google Drive backup?") },
+            text = {
+                Text(
+                    "This permanently removes your backup from Google Drive's private app " +
+                        "storage. It cannot be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        viewModel.deleteFromDrive()
+                    },
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    if (state.driveRestoreOptions != null) {
+        RestorePickerDialog(
+            entries = state.driveRestoreOptions!!,
+            onRestore = viewModel::restoreFromDriveEntry,
+            onDismiss = viewModel::dismissRestorePicker,
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -121,6 +168,9 @@ private fun SettingsScreenContent(
     onRestore: () -> Unit,
     onDriveBackup: () -> Unit,
     onDriveRestore: () -> Unit,
+    onDriveDelete: () -> Unit,
+    selectedFrequency: BackupFrequency,
+    onFrequencyChange: (BackupFrequency) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -165,6 +215,9 @@ private fun SettingsScreenContent(
                 state = state,
                 onDriveBackup = onDriveBackup,
                 onDriveRestore = onDriveRestore,
+                onDriveDelete = onDriveDelete,
+                selectedFrequency = selectedFrequency,
+                onFrequencyChange = onFrequencyChange,
             )
         }
     }
@@ -175,6 +228,9 @@ private fun DriveSection(
     state: SettingsUiState,
     onDriveBackup: () -> Unit,
     onDriveRestore: () -> Unit,
+    onDriveDelete: () -> Unit,
+    selectedFrequency: BackupFrequency,
+    onFrequencyChange: (BackupFrequency) -> Unit,
 ) {
     val working = state.status is BackupStatus.Working
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -185,6 +241,11 @@ private fun DriveSection(
                     "You'll be asked to sign in the first time.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = lastBackupLabel(state.lastBackupAtEpochMs),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
         )
         Button(
             onClick = onDriveBackup,
@@ -200,9 +261,50 @@ private fun DriveSection(
         ) {
             Text("Restore from Drive")
         }
+        OutlinedButton(
+            onClick = onDriveDelete,
+            enabled = !working,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Delete from Drive")
+        }
+
+        Text(
+            text = "Automatic backup",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text =
+                "Backs up in the background once consent is granted. " +
+                    "Manual only backs up when you tap above.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FrequencySelector(selected = selectedFrequency, onSelect = onFrequencyChange)
 
         if (state.statusSource == BackupSource.DRIVE) {
             StatusMessage(state.status)
+        }
+    }
+}
+
+/** Segmented choice of backup frequency, consistent with the theme chips. */
+@Composable
+private fun FrequencySelector(
+    selected: BackupFrequency,
+    onSelect: (BackupFrequency) -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.selectableGroup(),
+    ) {
+        BackupFrequency.entries.forEach { freq ->
+            FilterChip(
+                selected = freq == selected,
+                onClick = { onSelect(freq) },
+                label = { Text(freq.label()) },
+            )
         }
     }
 }
@@ -396,12 +498,6 @@ private fun BackupSection(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            text = lastBackupLabel(state.lastBackupAtEpochMs),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
         Button(
             onClick = onBackUp,
             enabled = !working,
@@ -454,7 +550,7 @@ private fun ThemeMode.label(): String =
 
 private fun lastBackupLabel(epochMs: Long?): String =
     if (epochMs == null) {
-        "No backup yet"
+        "No backup available"
     } else {
         "Last backup: " +
             DateUtils.getRelativeTimeSpanString(
@@ -463,6 +559,68 @@ private fun lastBackupLabel(epochMs: Long?): String =
                 DateUtils.MINUTE_IN_MILLIS,
             )
     }
+
+/** Formats a backup's timestamp for the restore picker (absolute + relative). */
+private fun backupEntryLabel(epochMs: Long): String {
+    val absolute = DateFormat.getDateTimeInstance().format(Date(epochMs))
+    val relative =
+        DateUtils.getRelativeTimeSpanString(
+            epochMs,
+            System.currentTimeMillis(),
+            DateUtils.MINUTE_IN_MILLIS,
+        )
+    return "$absolute ($relative)"
+}
+
+/**
+ * Lets the user pick which timestamped Drive backup to restore. The newest entry
+ * (index 0, since [GoogleDriveBackup.listBackups] returns them newest-first) is
+ * selected by default.
+ */
+@Composable
+private fun RestorePickerDialog(
+    entries: List<BackupEntry>,
+    onRestore: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selectedIndex by remember(entries) { mutableStateOf(0) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Restore from Google Drive") },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                Text(
+                    "Choose a backup to restore. The newest is selected by default.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                entries.forEachIndexed { index, entry ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = index == selectedIndex,
+                                onClick = { selectedIndex = index },
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = index == selectedIndex,
+                            onClick = { selectedIndex = index },
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(backupEntryLabel(entry.timestampEpochMs))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onRestore(entries[selectedIndex].id) }) { Text("Restore") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
 
 @Preview(showBackground = true)
 @Composable
@@ -483,6 +641,9 @@ private fun SettingsScreenPreview() {
             onRestore = {},
             onDriveBackup = {},
             onDriveRestore = {},
+            onDriveDelete = {},
+            selectedFrequency = BackupFrequency.MANUAL,
+            onFrequencyChange = {},
         )
     }
 }

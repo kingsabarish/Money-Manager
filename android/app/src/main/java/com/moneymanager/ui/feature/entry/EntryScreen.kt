@@ -4,12 +4,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -33,7 +35,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,6 +76,7 @@ fun EntryScreen(
         onAccountSelected = viewModel::onAccountSelected,
         onSave = viewModel::save,
         onDelete = viewModel::delete,
+        onNoteSuggestionSelected = viewModel::onNoteSuggestionSelected,
     )
 }
 
@@ -85,8 +92,19 @@ private fun EntryScreenContent(
     onAccountSelected: (Long) -> Unit,
     onSave: () -> Unit,
     onDelete: () -> Unit,
+    onNoteSuggestionSelected: (String) -> Unit,
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val amountFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    var expanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.isEditing) {
+        if (!state.isEditing) {
+            amountFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -104,8 +122,9 @@ private fun EntryScreenContent(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .padding(16.dp)
+                    .imePadding()
                     .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedTextField(
                 value = state.amountText,
@@ -113,7 +132,7 @@ private fun EntryScreenContent(
                 label = { Text("Amount") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().focusRequester(amountFocusRequester),
             )
 
             DateField(date = state.date, onDateChange = onDateChange)
@@ -139,6 +158,30 @@ private fun EntryScreenContent(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            if (state.note.isNotBlank() && state.noteSuggestions.isNotEmpty()) {
+                val filtered =
+                    state.noteSuggestions
+                        .filter { it.contains(state.note, ignoreCase = true) && it != state.note }
+                        .take(5)
+                if (filtered.isNotEmpty()) {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            filtered.forEach { suggestion ->
+                                TextButton(
+                                    onClick = { onNoteSuggestionSelected(suggestion) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = suggestion,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Start,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             state.errorMessage?.let { message ->
                 Text(text = message, color = MaterialTheme.colorScheme.error)
@@ -208,14 +251,17 @@ private fun DateField(date: LocalDate, onDateChange: (LocalDate) -> Unit) {
     if (showPicker) {
         val pickerState =
             rememberDatePickerState(initialSelectedDateMillis = date.toEpochMillisUtc())
+        val initialSelection = remember { pickerState.selectedDateMillis }
+        LaunchedEffect(pickerState.selectedDateMillis) {
+            val current = pickerState.selectedDateMillis
+            if (current != null && current != initialSelection) {
+                onDateChange(current.toLocalDateUtc())
+                showPicker = false
+            }
+        }
         DatePickerDialog(
             onDismissRequest = { showPicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    pickerState.selectedDateMillis?.let { onDateChange(it.toLocalDateUtc()) }
-                    showPicker = false
-                }) { Text("OK") }
-            },
+            confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { showPicker = false }) { Text("Cancel") }
             },

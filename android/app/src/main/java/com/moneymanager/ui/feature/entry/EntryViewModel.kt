@@ -34,6 +34,7 @@ data class EntryUiState(
     val errorMessage: String? = null,
     val saved: Boolean = false,
     val isEditing: Boolean = false,
+    val noteSuggestions: List<String> = emptyList(),
 ) {
     val selectedCategory: Category? get() = categories.firstOrNull { it.id == selectedCategoryId }
     val selectedAccount: Account? get() = accounts.firstOrNull { it.id == selectedAccountId }
@@ -97,6 +98,18 @@ class EntryViewModel
                     }
                 }
             }
+            viewModelScope.launch {
+                transactionRepository.observeAll().collect { transactions ->
+                    val suggestions =
+                        transactions
+                            .map { it.note }
+                            .filterNotNull()
+                            .filter { it.isNotBlank() }
+                            .distinct()
+                            .sorted()
+                    _uiState.update { it.copy(noteSuggestions = suggestions) }
+                }
+            }
         }
 
         fun onAmountChange(value: String) {
@@ -110,6 +123,9 @@ class EntryViewModel
         fun onDateChange(date: LocalDate) = _uiState.update { it.copy(date = date) }
 
         fun onNoteChange(note: String) = _uiState.update { it.copy(note = note) }
+
+        fun onNoteSuggestionSelected(suggestion: String) =
+            _uiState.update { it.copy(note = suggestion) }
 
         fun onCategorySelected(id: Long) = _uiState.update { it.copy(selectedCategoryId = id) }
 

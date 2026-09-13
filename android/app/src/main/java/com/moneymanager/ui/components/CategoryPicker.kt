@@ -7,13 +7,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -29,12 +32,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.moneymanager.domain.model.Category
 
-/**
- * A labeled category field that opens a two-pane picker: top-level categories on
- * the left, and the highlighted category's subcategories on the right. A
- * top-level category is itself selectable (its own row in the right pane), so the
- * user can choose either the main category or one of its subcategories.
- */
 @Composable
 fun CategoryPickerField(
     label: String,
@@ -43,7 +40,7 @@ fun CategoryPickerField(
     onSelected: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showDialog by remember { mutableStateOf(false) }
+    var showBottomSheet by remember { mutableStateOf(false) }
 
     val selected = categories.firstOrNull { it.id == selectedId }
     val displayLabel =
@@ -63,7 +60,7 @@ fun CategoryPickerField(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedButton(
-            onClick = { showDialog = true },
+            onClick = { showBottomSheet = true },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
@@ -74,21 +71,22 @@ fun CategoryPickerField(
         }
     }
 
-    if (showDialog) {
-        CategoryPickerDialog(
+    if (showBottomSheet) {
+        CategoryPickerBottomSheet(
             categories = categories,
             selectedId = selectedId,
-            onDismiss = { showDialog = false },
+            onDismiss = { showBottomSheet = false },
             onSelected = {
                 onSelected(it)
-                showDialog = false
+                showBottomSheet = false
             },
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategoryPickerDialog(
+private fun CategoryPickerBottomSheet(
     categories: List<Category>,
     selectedId: Long?,
     onDismiss: () -> Unit,
@@ -103,8 +101,6 @@ private fun CategoryPickerDialog(
                 .mapValues { (_, list) -> list.sortedBy { it.name } }
         }
 
-    // The parent whose children are shown on the right. Start on the current
-    // selection's branch, else the first top-level category.
     val initialParentId =
         remember(selectedId, categories) {
             when {
@@ -116,50 +112,44 @@ private fun CategoryPickerDialog(
     var highlightedId by remember { mutableStateOf(initialParentId) }
     val highlighted = topLevel.firstOrNull { it.id == highlightedId }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text("Select category") },
-        text = {
-            Row(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(topLevel, key = { it.id }) { cat ->
-                        MasterRow(
-                            name = cat.name,
-                            highlighted = cat.id == highlightedId,
-                            hasChildren = !childrenByParent[cat.id].isNullOrEmpty(),
-                            onClick = { highlightedId = cat.id },
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(topLevel, key = { it.id }) { cat ->
+                    MasterRow(
+                        name = cat.name,
+                        highlighted = cat.id == highlightedId,
+                        hasChildren = !childrenByParent[cat.id].isNullOrEmpty(),
+                        onClick = { highlightedId = cat.id },
+                    )
+                }
+            }
+            VerticalDivider()
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                if (highlighted != null) {
+                    item(key = "parent-${highlighted.id}") {
+                        DetailRow(
+                            name = highlighted.name,
+                            caption = "Main category",
+                            selected = highlighted.id == selectedId,
+                            onClick = { onSelected(highlighted.id) },
+                        )
+                        HorizontalDivider()
+                    }
+                    items(childrenByParent[highlighted.id].orEmpty(), key = { it.id }) { child ->
+                        DetailRow(
+                            name = child.name,
+                            caption = null,
+                            selected = child.id == selectedId,
+                            onClick = { onSelected(child.id) },
                         )
                     }
                 }
-                VerticalDivider()
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    if (highlighted != null) {
-                        item(key = "parent-${highlighted.id}") {
-                            DetailRow(
-                                name = highlighted.name,
-                                caption = "Main category",
-                                selected = highlighted.id == selectedId,
-                                onClick = { onSelected(highlighted.id) },
-                            )
-                            HorizontalDivider()
-                        }
-                        items(childrenByParent[highlighted.id].orEmpty(), key = { it.id }) { child ->
-                            DetailRow(
-                                name = child.name,
-                                caption = null,
-                                selected = child.id == selectedId,
-                                onClick = { onSelected(child.id) },
-                            )
-                        }
-                    }
-                }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
+        }
+    }
 }
 
 private fun selected(categories: List<Category>, id: Long?): Category? =

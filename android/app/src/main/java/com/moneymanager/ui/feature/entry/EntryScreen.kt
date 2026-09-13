@@ -1,5 +1,7 @@
 package com.moneymanager.ui.feature.entry
 
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -97,7 +100,23 @@ private fun EntryScreenContent(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val amountFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    var expanded by remember { mutableStateOf(false) }
+    val noteAreaBringIntoViewRequester = remember { BringIntoViewRequester() }
+    var noteFocused by remember { mutableStateOf(false) }
+    var suggestionsDismissed by remember { mutableStateOf(false) }
+
+    val showNoteSuggestions =
+        noteFocused &&
+            !suggestionsDismissed &&
+            state.note.isNotBlank() &&
+            state.noteSuggestions.isNotEmpty()
+
+    // When suggestions appear, scroll the note field + suggestion list up so they
+    // aren't hidden underneath the on-screen keyboard.
+    LaunchedEffect(showNoteSuggestions) {
+        if (showNoteSuggestions) {
+            noteAreaBringIntoViewRequester.bringIntoView()
+        }
+    }
 
     LaunchedEffect(state.isEditing) {
         if (!state.isEditing) {
@@ -151,31 +170,47 @@ private fun EntryScreenContent(
                 onSelected = onAccountSelected,
             )
 
-            OutlinedTextField(
-                value = state.note,
-                onValueChange = onNoteChange,
-                label = { Text("Note (optional)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            if (state.note.isNotBlank() && state.noteSuggestions.isNotEmpty()) {
-                val filtered =
-                    state.noteSuggestions
-                        .filter { it.contains(state.note, ignoreCase = true) && it != state.note }
-                        .take(5)
-                if (filtered.isNotEmpty()) {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                            filtered.forEach { suggestion ->
-                                TextButton(
-                                    onClick = { onNoteSuggestionSelected(suggestion) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text(
-                                        text = suggestion,
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .bringIntoViewRequester(noteAreaBringIntoViewRequester),
+            ) {
+                OutlinedTextField(
+                    value = state.note,
+                    onValueChange = { newValue ->
+                        suggestionsDismissed = false
+                        onNoteChange(newValue)
+                    },
+                    label = { Text("Note (optional)") },
+                    singleLine = true,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { noteFocused = it.isFocused },
+                )
+                if (showNoteSuggestions) {
+                    val filtered =
+                        state.noteSuggestions
+                            .filter { it.contains(state.note, ignoreCase = true) && it != state.note }
+                            .take(5)
+                    if (filtered.isNotEmpty()) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                                filtered.forEach { suggestion ->
+                                    TextButton(
+                                        onClick = {
+                                            suggestionsDismissed = true
+                                            onNoteSuggestionSelected(suggestion)
+                                        },
                                         modifier = Modifier.fillMaxWidth(),
-                                        textAlign = TextAlign.Start,
-                                    )
+                                    ) {
+                                        Text(
+                                            text = suggestion,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            textAlign = TextAlign.Start,
+                                        )
+                                    }
                                 }
                             }
                         }

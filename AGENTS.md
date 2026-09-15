@@ -132,23 +132,23 @@ Stack & tooling:
   9.5.0).
 - Build & run **natively on Windows** (no WSL/Docker): `./gradlew installDebug`
   from `android/` builds and installs to the connected phone.
- - `android/local.properties` (holds `sdk.dir`) is **machine-local and
-   gitignored** — never commit it. Every other `android/` config is committed.
- - Gradle runs via the wrapper (`./gradlew` from `android/`). The wrapper files
-   (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` +
-   `.properties`) are **committed** — clone and run, no `gradle wrapper` step.
- - **This dev machine's toolchain** (non-standard paths, captured for
-   reproducibility): the JDK lives at `C:\Android\jdk\...` (a write-permission
-   workaround for `C:\Program Files\Java`), the Android SDK at `C:\Android\Sdk`,
-   and the debug keystore (`C:\Users\sabar\.android\debug.keystore`, alias
-   `androiddebugkey`) has SHA-1
-   `A4:CD:61:74:60:D2:33:AC:0B:70:75:6A:F2:34:56:53:B6:22:72:94`. `local.properties`
-   points `sdk.dir` at `C:\Android\Sdk`. The OAuth client ID in
-   `default_web_client_id` is an **Android**-type client.
- - **Installation prompts:** when `./gradlew installDebug` pushes the APK, the
-   device may show an **"Install app"** or **"Open app"** system prompt. Tap
-   **Install** / **Open** on the device to continue. The Gradle task only
-   transfers the APK; it cannot dismiss those dialogs for you.
+- `android/local.properties` (holds `sdk.dir`) is **machine-local and
+  gitignored** — never commit it. Every other `android/` config is committed.
+- Gradle runs via the wrapper (`./gradlew` from `android/`). The wrapper files
+  (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` +
+  `.properties`) are **committed** — clone and run, no `gradle wrapper` step.
+- **This dev machine's toolchain** (non-standard paths, captured for
+  reproducibility): the JDK lives at `C:\Android\jdk\...` (a write-permission
+  workaround for `C:\Program Files\Java`), the Android SDK at `C:\Android\Sdk`,
+  and the debug keystore (`C:\Users\sabar\.android\debug.keystore`, alias
+  `androiddebugkey`) has SHA-1
+  `A4:CD:61:74:60:D2:33:AC:0B:70:75:6A:F2:34:56:53:B6:22:72:94`. `local.properties`
+  points `sdk.dir` at `C:\Android\Sdk`. The OAuth client ID in
+  `default_web_client_id` is an **Android**-type client.
+- **Installation prompts:** when `./gradlew installDebug` pushes the APK, the
+  device may show an **"Install app"** or **"Open app"** system prompt. Tap
+  **Install** / **Open** on the device to continue. The Gradle task only
+  transfers the APK; it cannot dismiss those dialogs for you.
 
 ## Workflow & git
 

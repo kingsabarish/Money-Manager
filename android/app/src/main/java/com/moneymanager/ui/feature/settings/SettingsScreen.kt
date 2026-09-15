@@ -25,6 +25,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
 import androidx.compose.material3.RadioButton
@@ -36,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -173,6 +176,10 @@ private fun SettingsScreenContent(
     onFrequencyChange: (BackupFrequency) -> Unit,
 ) {
     Scaffold(
+        contentWindowInsets =
+            ScaffoldDefaults.contentWindowInsets.only(
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            ),
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },

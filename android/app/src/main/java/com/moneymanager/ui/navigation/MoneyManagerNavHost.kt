@@ -1,16 +1,18 @@
 package com.moneymanager.ui.navigation
 
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -53,6 +55,7 @@ fun MoneyManagerNavHost() {
         currentDestination?.let { dest -> bottomTabs.any { dest.hasRoute(it.route::class) } } ?: true
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar {
@@ -85,11 +88,14 @@ fun MoneyManagerNavHost() {
         },
     ) { innerPadding ->
         // Each screen owns its own Scaffold/TopAppBar (handling the top insets); we
-        // only reserve the bottom-bar space here.
+        // only reserve the bottom-bar space here when the bottom bar is shown.
         NavHost(
             navController = navController,
             startDestination = Home,
-            modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding()),
+            modifier =
+                Modifier.padding(
+                    bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp,
+                ),
         ) {
             composable<Home> {
                 HomeScreen(

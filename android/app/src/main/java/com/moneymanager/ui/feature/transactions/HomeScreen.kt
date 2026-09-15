@@ -4,9 +4,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +18,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -67,6 +71,10 @@ private fun HomeScreenContent(
     onNextMonth: () -> Unit,
 ) {
     Scaffold(
+        contentWindowInsets =
+            ScaffoldDefaults.contentWindowInsets.only(
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            ),
         topBar = {
             TopAppBar(
                 title = { Text("Money Manager") },
@@ -108,7 +116,10 @@ private fun HomeScreenContent(
 
 @Composable
 private fun ExpenseList(sections: List<DaySection>, onEditExpense: (Long) -> Unit) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 88.dp),
+    ) {
         sections.forEach { section ->
             item(key = "header-${section.date}") {
                 DayHeader(section)

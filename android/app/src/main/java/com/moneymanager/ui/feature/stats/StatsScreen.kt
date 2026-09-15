@@ -8,13 +8,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -26,6 +28,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -117,6 +120,10 @@ private fun StatsScreenContent(
     onSelectCategory: (Long) -> Unit,
 ) {
     Scaffold(
+        contentWindowInsets =
+            ScaffoldDefaults.contentWindowInsets.only(
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            ),
         topBar = { TopAppBar(title = { Text("Stats") }) },
     ) { innerPadding ->
         Column(
@@ -320,6 +327,10 @@ private fun CategoryDetailContent(
     onCustomRange: (LocalDate, LocalDate) -> Unit,
 ) {
     Scaffold(
+        contentWindowInsets =
+            ScaffoldDefaults.contentWindowInsets.only(
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            ),
         topBar = {
             TopAppBar(
                 title = { Text(detail.categoryName) },

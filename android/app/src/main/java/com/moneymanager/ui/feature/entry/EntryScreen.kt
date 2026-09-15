@@ -286,17 +286,16 @@ private fun DateField(date: LocalDate, onDateChange: (LocalDate) -> Unit) {
     if (showPicker) {
         val pickerState =
             rememberDatePickerState(initialSelectedDateMillis = date.toEpochMillisUtc())
-        val initialSelection = remember { pickerState.selectedDateMillis }
-        LaunchedEffect(pickerState.selectedDateMillis) {
-            val current = pickerState.selectedDateMillis
-            if (current != null && current != initialSelection) {
-                onDateChange(current.toLocalDateUtc())
-                showPicker = false
-            }
-        }
         DatePickerDialog(
             onDismissRequest = { showPicker = false },
-            confirmButton = {},
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { onDateChange(it.toLocalDateUtc()) }
+                        showPicker = false
+                    },
+                ) { Text("OK") }
+            },
             dismissButton = {
                 TextButton(onClick = { showPicker = false }) { Text("Cancel") }
             },

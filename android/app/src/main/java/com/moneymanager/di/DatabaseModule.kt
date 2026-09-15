@@ -26,7 +26,10 @@ object DatabaseModule {
             context,
             MoneyManagerDatabase::class.java,
             MoneyManagerDatabase.NAME,
-        ).build()
+        )
+            .fallbackToDestructiveMigration(dropAllTables = true)
+            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
+            .build()
 
     @Provides
     fun provideCategoryDao(db: MoneyManagerDatabase): CategoryDao = db.categoryDao()

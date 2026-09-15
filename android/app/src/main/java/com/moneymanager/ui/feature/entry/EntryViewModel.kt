@@ -82,7 +82,8 @@ class EntryViewModel
                         state.copy(
                             categories = categories,
                             selectedCategoryId =
-                                state.selectedCategoryId ?: categories.firstOrNull()?.id,
+                                state.selectedCategoryId
+                                    ?: (if (editingId == null) categories.firstOrNull()?.id else null),
                         )
                     }
                 }
@@ -93,7 +94,8 @@ class EntryViewModel
                         state.copy(
                             accounts = accounts,
                             selectedAccountId =
-                                state.selectedAccountId ?: accounts.firstOrNull()?.id,
+                                state.selectedAccountId
+                                    ?: (if (editingId == null) accounts.firstOrNull()?.id else null),
                         )
                     }
                 }

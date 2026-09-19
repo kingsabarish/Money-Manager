@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.text.format.DateUtils
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -374,6 +375,13 @@ private fun AutoCaptureSection() {
             ActivityResultContracts.RequestPermission(),
         ) { granted ->
             hasSmsPermission = granted
+            if (!granted) {
+                Toast.makeText(context, "Please enable SMS permission in App Info", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                }
+                context.startActivity(intent)
+            }
         }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -488,56 +496,6 @@ private fun AutoCaptureSection() {
                     }
                 }
             }
-        }
-
-        // Help card explaining restricted settings / personal data at risk
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    "Warning: \"Personal data at risk\" or \"Restricted setting\"?",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-                Text(
-                    "Android restricts sensitive permissions for apps installed outside the Play Store. To allow:\n" +
-                        "1. Tap \"Open App Info\" below\n" +
-                        "2. Tap the 3 dots (⋮) in the top-right corner\n" +
-                        "3. Tap \"Allow restricted settings\" (unlock device)\n" +
-                        "4. Return here and tap Grant / Enable above.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-                OutlinedButton(
-                    onClick = {
-                        val intent =
-                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = Uri.fromParts("package", context.packageName, null)
-                            }
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text("Open App Info")
-                }
-            }
-        }
-
-        OutlinedButton(
-            onClick = {
-                val intent =
-                    Intent("com.moneymanager.action.TEST_EXPENSE_SMS").apply {
-                        setPackage(context.packageName)
-                        putExtra("body", "Rs 350.00 debited from A/c XX1234 on 19-Sep-26 at SWIGGY UPI ref 423984")
-                    }
-                context.sendBroadcast(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Simulate Test Expense (Swiggy ₹350)")
         }
     }
 }

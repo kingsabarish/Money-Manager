@@ -126,19 +126,21 @@ object TransactionParser {
 
         // 6. Extract Merchant / Payee
         val merchantMatcher = MERCHANT_AT_PATTERN.matcher(clean)
-        var merchant = if (merchantMatcher.find()) {
-            var rawMerchant = merchantMatcher.group(1)?.trim() ?: ""
-            val delimMatcher = MERCHANT_DELIMITER.matcher(rawMerchant)
+        val rawMerchant = if (merchantMatcher.find()) {
+            var raw = merchantMatcher.group(1)?.trim() ?: ""
+            val delimMatcher = MERCHANT_DELIMITER.matcher(raw)
             if (delimMatcher.find()) {
-                rawMerchant = rawMerchant.substring(0, delimMatcher.start()).trim()
+                raw = raw.substring(0, delimMatcher.start()).trim()
             }
-            rawMerchant.trimEnd('.', ',', ';', ' ')
+            raw.trimEnd('.', ',', ';', ' ')
         } else {
             null
         }
 
-        // Clean up UPI suffixes or VPA noise if needed
-        merchant = cleanMerchantName(merchant) ?: "Transfer"
+        // Clean up UPI suffixes or VPA noise if needed.
+        // If cleanMerchantName is null (e.g. account number or VPA), keep rawMerchant in merchant
+        // for internal ML categorization, while isReasonableNote ensures note stays null in the UI.
+        val merchant = cleanMerchantName(rawMerchant) ?: rawMerchant?.takeIf { it.isNotBlank() } ?: "Transfer"
 
         val date = Instant.ofEpochMilli(timestampEpochMs).atZone(zoneId).toLocalDate()
 

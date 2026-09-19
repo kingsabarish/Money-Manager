@@ -20,7 +20,11 @@ import com.moneymanager.ui.theme.MoneyManagerTheme
  * [com.moneymanager.MoneyManagerApp] Application class.
  */
 @Composable
-fun MoneyManagerRoot(viewModel: MoneyManagerRootViewModel = hiltViewModel()) {
+fun MoneyManagerRoot(
+    initialEditTransactionId: Long? = null,
+    onEditTransactionHandled: () -> Unit = {},
+    viewModel: MoneyManagerRootViewModel = hiltViewModel(),
+) {
     val prefs by viewModel.themePrefs.collectAsStateWithLifecycle()
 
     val darkTheme =
@@ -39,7 +43,11 @@ fun MoneyManagerRoot(viewModel: MoneyManagerRootViewModel = hiltViewModel()) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
-            MoneyManagerNavHost()
+            MoneyManagerNavHost(initialEditTransactionId = initialEditTransactionId)
+            MoneyManagerNavHost(
+                initialEditTransactionId = initialEditTransactionId,
+                onEditTransactionHandled = onEditTransactionHandled,
+            )
         }
     }
 }

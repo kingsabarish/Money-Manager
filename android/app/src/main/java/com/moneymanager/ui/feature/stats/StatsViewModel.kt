@@ -281,9 +281,10 @@ class StatsViewModel
                         .groupBy { it.categoryId }
                         .map { (subId, group) ->
                             val amount = group.fold(BigDecimal.ZERO) { acc, t -> acc + t.amount }
+                            val label = if (subId == categoryId) "General" else (nameOf[subId] ?: "Unknown")
                             SubcategorySlice(
                                 categoryId = subId,
-                                name = nameOf[subId] ?: "Unknown",
+                                name = label,
                                 amount = amount,
                                 fraction = amount.divide(total, 6, RoundingMode.HALF_UP).toFloat(),
                             )

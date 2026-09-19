@@ -136,4 +136,44 @@ class TransactionRepositoryImplTest {
             assertTrue(repo.delete(id) is AppResult.Success)
             assertTrue(db.transactions.value.isEmpty())
         }
+
+    @Test
+    fun `addAutoExpense creates an unapproved expense`() =
+        runTest {
+            val result =
+                repo.addAutoExpense(
+                    amount = BigDecimal("45.00"),
+                    date = LocalDate.of(2026, 9, 19),
+                    categoryId = 1,
+                    accountId = 1,
+                    note = "auto detected",
+                )
+            assertTrue(result is AppResult.Success)
+            val tx = (result as AppResult.Success).data
+            assertTrue(!tx.isApproved)
+            assertTrue(!db.transactions.value.single().isApproved)
+        }
+
+    @Test
+    fun `approve marks an unapproved expense as approved`() =
+        runTest {
+            val tx =
+                (repo.addAutoExpense(BigDecimal("50.00"), LocalDate.of(2026, 9, 19), 1, 1, null)
+                    as AppResult.Success).data
+            assertTrue(!tx.isApproved)
+
+            assertTrue(repo.approve(tx.id) is AppResult.Success)
+            assertTrue(db.transactions.value.single().isApproved)
+        }
+
+    @Test
+    fun `approveAll marks all unapproved expenses as approved`() =
+        runTest {
+            repo.addAutoExpense(BigDecimal("10.00"), LocalDate.of(2026, 9, 19), 1, 1, null)
+            repo.addAutoExpense(BigDecimal("20.00"), LocalDate.of(2026, 9, 19), 1, 1, null)
+            assertEquals(2, db.transactions.value.count { !it.isApproved })
+
+            assertTrue(repo.approveAll() is AppResult.Success)
+            assertEquals(0, db.transactions.value.count { !it.isApproved })
+        }
 }

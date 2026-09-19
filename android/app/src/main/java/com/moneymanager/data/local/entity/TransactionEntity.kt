@@ -32,7 +32,7 @@ import java.time.LocalDate
             onDelete = ForeignKey.RESTRICT,
         ),
     ],
-    indices = [Index("categoryId"), Index("accountId"), Index("date")],
+    indices = [Index("categoryId"), Index("accountId"), Index("date"), Index("isApproved")],
 )
 data class TransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -42,4 +42,5 @@ data class TransactionEntity(
     val categoryId: Long,
     val accountId: Long,
     val note: String?,
+    val isApproved: Boolean = true,
 )

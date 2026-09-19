@@ -1,7 +1,13 @@
 package com.moneymanager.ui.feature.settings
 
+import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -21,7 +27,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Surface
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.DisposableEffect
+import com.moneymanager.data.ingestion.TransactionNotificationListenerService
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
@@ -210,6 +226,10 @@ private fun SettingsScreenContent(
 
             HorizontalDivider()
 
+            AutoCaptureSection()
+
+            HorizontalDivider()
+
             BackupSection(
                 state = state,
                 onBackUp = onBackUp,
@@ -330,6 +350,194 @@ private fun ManageSection(onManage: () -> Unit) {
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Manage categories & accounts")
+        }
+    }
+}
+
+@Composable
+private fun AutoCaptureSection() {
+    val context = LocalContext.current
+    var hasSmsPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    var hasNotificationAccess by remember {
+        mutableStateOf(
+            NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName),
+        )
+    }
+
+    val smsPermissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            hasSmsPermission = granted
+        }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer =
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    hasSmsPermission =
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
+                            PackageManager.PERMISSION_GRANTED
+                    hasNotificationAccess =
+                        NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle("Automatic Expense Capture")
+        Text(
+            text = "Automatically capture expenses from bank debit SMS messages and Google Pay split requests.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        // SMS Status Row
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Bank SMS Capture", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        if (hasSmsPermission) "Active (Listening for bank SMS)" else "SMS permission required",
+                        style = MaterialTheme.typography.bodySmall,
+                        color =
+                            if (hasSmsPermission) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                    )
+                }
+                if (!hasSmsPermission) {
+                    Button(
+                        onClick = { smsPermissionLauncher.launch(Manifest.permission.RECEIVE_SMS) },
+                    ) {
+                        Text("Grant")
+                    }
+                }
+            }
+        }
+
+        // Notification Access Status Row
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Google Pay Split Capture", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        if (hasNotificationAccess) {
+                            "Active (Listening for GPay splits)"
+                        } else {
+                            "Notification access required"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color =
+                            if (hasNotificationAccess) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                    )
+                }
+                if (!hasNotificationAccess) {
+                    Button(
+                        onClick = {
+                            val intent =
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                    Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).apply {
+                                        putExtra(
+                                            Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                                            ComponentName(
+                                                context,
+                                                TransactionNotificationListenerService::class.java,
+                                            ).flattenToString(),
+                                        )
+                                    }
+                                } else {
+                                    Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                }
+                            context.startActivity(intent)
+                        },
+                    ) {
+                        Text("Enable")
+                    }
+                }
+            }
+        }
+
+        // Help card explaining restricted settings / personal data at risk
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "Warning: \"Personal data at risk\" or \"Restricted setting\"?",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    "Android restricts sensitive permissions for apps installed outside the Play Store. To allow:\n" +
+                        "1. Tap \"Open App Info\" below\n" +
+                        "2. Tap the 3 dots (⋮) in the top-right corner\n" +
+                        "3. Tap \"Allow restricted settings\" (unlock device)\n" +
+                        "4. Return here and tap Grant / Enable above.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                OutlinedButton(
+                    onClick = {
+                        val intent =
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", context.packageName, null)
+                            }
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Text("Open App Info")
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = {
+                val intent =
+                    Intent("com.moneymanager.action.TEST_EXPENSE_SMS").apply {
+                        setPackage(context.packageName)
+                        putExtra("body", "Rs 350.00 debited from A/c XX1234 on 19-Sep-26 at SWIGGY UPI ref 423984")
+                    }
+                context.sendBroadcast(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Simulate Test Expense (Swiggy ₹350)")
         }
     }
 }

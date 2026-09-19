@@ -165,7 +165,39 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
         db.transactions.value = db.transactions.value.filterNot { it.id == entity.id }
     }
 
+    override fun observeApproved(): Flow<List<TransactionEntity>> =
+        db.transactions.map { list -> list.filter { it.isApproved } }
+
+    override fun observeUnapproved(): Flow<List<TransactionEntity>> =
+        db.transactions.map { list -> list.filter { !it.isApproved } }
+
+    override fun observeUnapprovedCount(): Flow<Int> =
+        db.transactions.map { list -> list.count { !it.isApproved } }
+
+    override suspend fun setApproved(id: Long, approved: Boolean) {
+        db.transactions.value = db.transactions.value.map {
+            if (it.id == id) it.copy(isApproved = approved) else it
+        }
+    }
+
+    override suspend fun approveAll() {
+        db.transactions.value = db.transactions.value.map { it.copy(isApproved = true) }
+    }
+
+    override suspend fun deleteById(id: Long) {
+        db.transactions.value = db.transactions.value.filterNot { it.id == id }
+    }
+
     override suspend fun deleteAll() {
         db.transactions.value = emptyList()
     }
+
+    override suspend fun findMatching(
+        amount: java.math.BigDecimal,
+        date: java.time.LocalDate,
+        note: String?,
+    ): TransactionEntity? =
+        db.transactions.value.firstOrNull {
+            it.amount.compareTo(amount) == 0 && it.date == date && it.note == note
+        }
 }

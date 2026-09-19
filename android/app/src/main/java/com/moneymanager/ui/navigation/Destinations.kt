@@ -21,3 +21,6 @@ data object Settings
 
 @Serializable
 data object Manage
+
+@Serializable
+data object Unapproved

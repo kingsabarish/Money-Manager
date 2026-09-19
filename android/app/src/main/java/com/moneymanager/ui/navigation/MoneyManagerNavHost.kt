@@ -46,13 +46,34 @@ private val bottomTabs =
  * tabs; Entry and Manage are pushed on top full-screen (no bottom bar).
  */
 @Composable
-fun MoneyManagerNavHost() {
+fun MoneyManagerNavHost(
+    initialEditTransactionId: Long? = null,
+    onEditTransactionHandled: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
     val showBottomBar =
         currentDestination?.let { dest -> bottomTabs.any { dest.hasRoute(it.route::class) } } ?: true
+
+    androidx.compose.runtime.LaunchedEffect(initialEditTransactionId) {
+        if (initialEditTransactionId != null) {
+            navController.navigate(Entry(transactionId = initialEditTransactionId))
+            onEditTransactionHandled()
+        }
+    }
+
+    val navigateBackOrHome = {
+        if (!navController.popBackStack()) {
+            navController.navigate(Home) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    inclusive = false
+                }
+                launchSingleTop = true
+            }
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -87,8 +108,6 @@ fun MoneyManagerNavHost() {
             }
         },
     ) { innerPadding ->
-        // Each screen owns its own Scaffold/TopAppBar (handling the top insets); we
-        // only reserve the bottom-bar space here when the bottom bar is shown.
         NavHost(
             navController = navController,
             startDestination = Home,
@@ -101,6 +120,7 @@ fun MoneyManagerNavHost() {
                 HomeScreen(
                     onAddExpense = { navController.navigate(Entry()) },
                     onEditExpense = { id -> navController.navigate(Entry(id)) },
+                    onNavigateToUnapproved = { navController.navigate(Unapproved) },
                 )
             }
             composable<Stats> {
@@ -111,12 +131,18 @@ fun MoneyManagerNavHost() {
             }
             composable<Entry> {
                 EntryScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onSaved = { navController.popBackStack() },
+                    onNavigateBack = navigateBackOrHome,
+                    onSaved = navigateBackOrHome,
                 )
             }
             composable<Manage> {
-                ManageScreen(onNavigateBack = { navController.popBackStack() })
+                ManageScreen(onNavigateBack = navigateBackOrHome)
+            }
+            composable<Unapproved> {
+                com.moneymanager.ui.feature.unapproved.UnapprovedTransactionsScreen(
+                    onBack = navigateBackOrHome,
+                    onEditTransaction = { id -> navController.navigate(Entry(id)) },
+                )
             }
         }
     }

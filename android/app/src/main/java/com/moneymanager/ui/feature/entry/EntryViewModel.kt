@@ -51,6 +51,8 @@ class EntryViewModel
         private val transactionRepository: TransactionRepository,
         categoryRepository: CategoryRepository,
         accountRepository: AccountRepository,
+        private val categorizationEngine: com.moneymanager.data.categorization.CategorizationEngine,
+        private val notificationManager: com.moneymanager.data.ingestion.TransactionNotificationManager,
     ) : ViewModel() {
         /** Non-null when editing an existing expense (from the Entry route arg). */
         private val editingId: Long? = savedStateHandle.toRoute<Entry>().transactionId
@@ -151,14 +153,27 @@ class EntryViewModel
             viewModelScope.launch {
                 val result =
                     if (editingId != null) {
-                        transactionRepository.updateExpense(
-                            id = editingId,
-                            amount = amount,
-                            date = state.date,
-                            categoryId = categoryId,
-                            accountId = accountId,
-                            note = state.note,
-                        )
+                        val updateRes =
+                            transactionRepository.updateExpense(
+                                id = editingId,
+                                amount = amount,
+                                date = state.date,
+                                categoryId = categoryId,
+                                accountId = accountId,
+                                note = state.note,
+                            )
+                        if (updateRes is AppResult.Success) {
+                            notificationManager.cancelNotification(editingId.toInt())
+                            if (!state.note.isNullOrBlank()) {
+                                categorizationEngine.train(
+                                    merchant = state.note,
+                                    note = state.note,
+                                    amount = amount,
+                                    assignedCategoryId = categoryId,
+                                )
+                            }
+                        }
+                        updateRes
                     } else {
                         transactionRepository.addExpense(
                             amount = amount,
@@ -184,7 +199,10 @@ class EntryViewModel
             _uiState.update { it.copy(saving = true, errorMessage = null) }
             viewModelScope.launch {
                 when (val result = transactionRepository.delete(id)) {
-                    is AppResult.Success -> _uiState.update { it.copy(saving = false, saved = true) }
+                    is AppResult.Success -> {
+                        notificationManager.cancelNotification(id.toInt())
+                        _uiState.update { it.copy(saving = false, saved = true) }
+                    }
                     is AppResult.Failure ->
                         _uiState.update {
                             it.copy(saving = false, errorMessage = result.error.toMessage())

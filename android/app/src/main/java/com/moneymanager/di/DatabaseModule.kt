@@ -5,6 +5,7 @@ import androidx.room.Room
 import com.moneymanager.data.local.MoneyManagerDatabase
 import com.moneymanager.data.local.dao.AccountDao
 import com.moneymanager.data.local.dao.CategoryDao
+import com.moneymanager.data.local.dao.CategoryMlWeightDao
 import com.moneymanager.data.local.dao.TransactionDao
 import dagger.Module
 import dagger.Provides
@@ -27,6 +28,7 @@ object DatabaseModule {
             MoneyManagerDatabase::class.java,
             MoneyManagerDatabase.NAME,
         )
+            .addMigrations(MoneyManagerDatabase.MIGRATION_1_2)
             .fallbackToDestructiveMigration(dropAllTables = true)
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
@@ -39,4 +41,7 @@ object DatabaseModule {
 
     @Provides
     fun provideTransactionDao(db: MoneyManagerDatabase): TransactionDao = db.transactionDao()
+
+    @Provides
+    fun provideCategoryMlWeightDao(db: MoneyManagerDatabase): CategoryMlWeightDao = db.categoryMlWeightDao()
 }

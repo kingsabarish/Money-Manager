@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- Permissions for automated transaction capture & notifications -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".MoneyManagerApp"
         android:allowBackup="true"
@@ -30,6 +34,40 @@
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- SMS Receiver for Bank Transaction alerts -->
+        <receiver
+            android:name=".data.ingestion.SmsTransactionReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Test Receiver for Mock Bank SMS Simulation (Testing) -->
+        <receiver
+            android:name=".data.ingestion.TestSmsReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.moneymanager.action.TEST_EXPENSE_SMS" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Receiver for Interactive Notification Actions (Approve, Delete) -->
+        <receiver
+            android:name=".data.ingestion.TransactionActionReceiver"
+            android:exported="false" />
+
+        <!-- Notification Listener Service for Google Pay split requests -->
+        <service
+            android:name=".data.ingestion.TransactionNotificationListenerService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
 
     </application>
 

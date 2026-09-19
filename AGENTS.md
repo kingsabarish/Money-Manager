@@ -60,8 +60,38 @@ Persistence:
 
 - Room database on-device; amounts stored as **TEXT** (`BigDecimal` ↔ String
   converter — never REAL/Double), dates as ISO `yyyy-MM-dd`.
+- Database version is **3** (version 3 added internal `merchant TEXT` column via
+  `MIGRATION_2_3`). `merchant` is used strictly for internal ML payee/vendor
+  learning and is never shown in place of user notes in the UI.
 - Room `exportSchema = true` writes schema JSON to `app/schemas/` (committed) so
   migrations are possible later.
+
+## Transaction ingestion & categorization
+
+- **Ingestion**:
+  - `SmsTransactionReceiver` intercepts bank debit SMS messages.
+  - `TransactionNotificationListenerService` intercepts Google Pay push notifications
+    (including split requests like `Food - for-eggs`).
+  - `TransactionParser` parses debit amount, account ref, and payee merchant/notes.
+    Account numbers and raw reference strings are filtered out from the human note
+    via `isReasonableNote()`.
+- **Categorization priority hierarchy** (`CategorizationEngine`):
+  - **Priority 1: Explicit Category in Group / Note (Highest)**: Direct name match
+    (ignoring emoji prefixes). Subcategories are checked strictly: explicit meal
+    keywords (`breakfast`, `lunch`, `dinner`, `snacks`) or transport keywords
+    assign a subcategory; generic food items (`egg`, `idly`, `dosa`, `biryani`)
+    remain at the top-level category (`Food`) with `subCategoryId = null`.
+  - **Priority 2: User Transaction History & Online Learned Weights (Medium)**:
+    Checks `category_ml_weights` for `merchant:` (friend bank account / UPI ID)
+    or confirmed tokens. Whenever a transaction is saved/edited (even with a blank
+    note), `EntryViewModel` trains the engine on the merchant payee.
+  - **Priority 3: Seeded Keyword Dictionary & Fallback Heuristics (Lowest)**:
+    Pre-seeded keywords from 1,980+ past transactions and business suffix heuristics
+    (`...foods`, `...bakes`, `...fuels`). Fallback to `Other` / `Others`.
+- **Category consolidation**:
+  - `cab`, `auto`, and `Rapido` are combined into **`Cab / Auto`**.
+  - `Bus` is converted to **`Public Transport`**.
+  - `DatabaseSeeder` and `SnapshotCodec` normalize these categories automatically.
 
 Stack & tooling:
 

@@ -12,6 +12,8 @@ snapshot) for durability. There is no backend or server dependency at runtime.
 - Track income, expenses, and budgets on-device.
 - Two-level, self-referential **categories** and **accounts** (top-level groups
   with child items) — no separate "group" tables.
+- **Automated transaction ingestion**: captures debit bank SMS messages and Google Pay split push notifications.
+- **Adaptive on-device categorization engine**: 3-tier priority hierarchy (Explicit Note/Group Match → Learned Transaction History → Seeded Keyword Dictionary), with two-level subcategory resolution and online learning.
 - JSON snapshot backups to Google Drive's hidden `appDataFolder`, with optional
   scheduled backups (daily / weekly / monthly).
 - Material 3 UI with dynamic color (Material You) on Android 12+.

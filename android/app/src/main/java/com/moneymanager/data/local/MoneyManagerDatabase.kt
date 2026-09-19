@@ -28,7 +28,7 @@ import com.moneymanager.data.local.entity.TransactionEntity
         TransactionEntity::class,
         CategoryMlWeightEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -62,6 +62,12 @@ abstract class MoneyManagerDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_category_ml_weights_categoryId ON category_ml_weights(categoryId)")
                 db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_category_ml_weights_featureKey_categoryId ON category_ml_weights(featureKey, categoryId)")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transactions ADD COLUMN merchant TEXT")
             }
         }
     }

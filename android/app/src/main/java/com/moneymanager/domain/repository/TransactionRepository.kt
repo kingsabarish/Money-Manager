@@ -32,6 +32,7 @@ interface TransactionRepository {
         categoryId: Long,
         accountId: Long,
         note: String?,
+        merchant: String? = null,
     ): AppResult<Transaction>
 
     /**
@@ -43,6 +44,7 @@ interface TransactionRepository {
         categoryId: Long,
         accountId: Long,
         note: String?,
+        merchant: String? = null,
     ): AppResult<Transaction>
 
     /**
@@ -56,6 +58,7 @@ interface TransactionRepository {
         categoryId: Long,
         accountId: Long,
         note: String?,
+        merchant: String? = null,
     ): AppResult<Transaction>
 
     suspend fun approve(id: Long): AppResult<Unit>

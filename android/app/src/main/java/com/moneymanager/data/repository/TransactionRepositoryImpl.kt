@@ -26,7 +26,16 @@ class TransactionRepositoryImpl
         private val accountDao: AccountDao,
     ) : TransactionRepository {
         override fun observeAll(): Flow<List<Transaction>> =
-            transactionDao.observeAll().map { rows -> rows.map { it.toDomain() } }
+            transactionDao.observeApproved().map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeApproved(): Flow<List<Transaction>> =
+            transactionDao.observeApproved().map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeUnapproved(): Flow<List<Transaction>> =
+            transactionDao.observeUnapproved().map { rows -> rows.map { it.toDomain() } }
+
+        override fun observeUnapprovedCount(): Flow<Int> =
+            transactionDao.observeUnapprovedCount()
 
         override suspend fun getById(id: Long): AppResult<Transaction> {
             val entity = transactionDao.getById(id) ?: return fail(AppError.NotFound)
@@ -50,6 +59,30 @@ class TransactionRepositoryImpl
                     categoryId = categoryId,
                     accountId = accountId,
                     note = note?.takeIf { it.isNotBlank() },
+                    isApproved = true,
+                )
+            val id = transactionDao.insert(entity)
+            return entity.copy(id = id).toDomain().asSuccess()
+        }
+
+        override suspend fun addAutoExpense(
+            amount: BigDecimal,
+            date: LocalDate,
+            categoryId: Long,
+            accountId: Long,
+            note: String?,
+        ): AppResult<Transaction> {
+            validate(amount, categoryId, accountId)?.let { return fail(it) }
+
+            val entity =
+                TransactionEntity(
+                    type = TransactionType.EXPENSE,
+                    date = date,
+                    amount = amount.setScale(2, java.math.RoundingMode.HALF_UP),
+                    categoryId = categoryId,
+                    accountId = accountId,
+                    note = note?.takeIf { it.isNotBlank() },
+                    isApproved = false,
                 )
             val id = transactionDao.insert(entity)
             return entity.copy(id = id).toDomain().asSuccess()
@@ -73,9 +106,21 @@ class TransactionRepositoryImpl
                     categoryId = categoryId,
                     accountId = accountId,
                     note = note?.takeIf { it.isNotBlank() },
+                    isApproved = true,
                 )
             transactionDao.update(updated)
             return updated.toDomain().asSuccess()
+        }
+
+        override suspend fun approve(id: Long): AppResult<Unit> {
+            val existing = transactionDao.getById(id) ?: return fail(AppError.NotFound)
+            transactionDao.setApproved(existing.id, true)
+            return Unit.asSuccess()
+        }
+
+        override suspend fun approveAll(): AppResult<Unit> {
+            transactionDao.approveAll()
+            return Unit.asSuccess()
         }
 
         /** Shared field validation for add/update; null means valid. */

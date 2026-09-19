@@ -49,6 +49,7 @@ object SnapshotCodec {
                         categoryId = it.categoryId,
                         accountId = it.accountId,
                         note = it.note,
+                        isApproved = it.isApproved,
                     )
                 },
         )
@@ -82,6 +83,7 @@ object SnapshotCodec {
                 categoryId = it.categoryId,
                 accountId = it.accountId,
                 note = it.note,
+                isApproved = it.isApproved,
             )
         }
 }

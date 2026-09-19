@@ -24,4 +24,5 @@ fun TransactionEntity.toDomain(): Transaction =
         categoryId = categoryId,
         accountId = accountId,
         note = note,
+        isApproved = isApproved,
     )

@@ -48,4 +48,5 @@ data class TransactionSnapshot(
     val categoryId: Long,
     val accountId: Long,
     val note: String?,
+    val isApproved: Boolean = true,
 )

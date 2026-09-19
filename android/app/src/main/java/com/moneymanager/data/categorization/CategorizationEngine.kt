@@ -458,7 +458,7 @@ class CategorizationEngine
                 )
 
             val FOOD_SUFFIXES = listOf("foods", "restaurant", "hotel", "kitchen", "bakes", "chaat", "sweets", "mess", "canteen", "bakery")
-            val TRAVEL_SUFFIXES = listOf("travels", "fuels", "petroleum", "motors")
+            val TRAVEL_SUFFIXES = listOf("travels", "fuels", "fuel", "fue", "petroleum", "motors")
             val HEALTH_SUFFIXES = listOf("pharmacy", "pharma", "clinic", "hospital")
             val APPAREL_SUFFIXES = listOf("textiles", "silks", "fashions", "trends", "menswear")
             val HOUSEHOLD_SUFFIXES = listOf("mart", "supermarket", "provisions", "stores")

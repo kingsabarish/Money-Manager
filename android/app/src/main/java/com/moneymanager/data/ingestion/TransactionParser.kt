@@ -46,7 +46,7 @@ object TransactionParser {
 
     // Debit patterns
     private val DEBIT_INDICATOR = Pattern.compile(
-        """(?i)\b(debited|debited\s+by|debited\s+with|spent|paid|transferred\s+to|purchase\s+of|charged\s+to|done\s+on)\b"""
+        """(?i)\b(debited|debited\s+by|debited\s+with|spent|paid|transferred\s+to|purchase\s+of|charged\s+to|done\s+on|was\s+made|has\s+been\s+made|made\s+using|transaction\s+of|used\s+at|used\s+on|authorized\s+for)\b"""
     )
 
     // Amount extraction: matches currency symbols and standard Indian/Western number formats (e.g. Rs 1,499.00, INR 500, ₹ 250.50)
@@ -54,17 +54,20 @@ object TransactionParser {
         """(?i)(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)"""
     )
 
-    // Account / Card reference extraction: matches "Card ending 1234", "Card XX1234", "A/c **5678", "Acct XX123"
+    // Account / Card reference extraction: matches "Card ending 1234", "Card XX1234", "A/c **5678", "Acct XX123", "SMS BLOCK 4006"
     private val ACCOUNT_REF_PATTERN = Pattern.compile(
-        """(?i)(?:card|a/?c|acct|account)\s*(?:no\.?|ending|ending\s+with|number)?\s*[*xX-]*(\d{3,4})"""
+        """(?i)(?:(?:card|a/?c|acct|account)\s*(?:no\.?|ending|ending\s+with|number)?\s*[*xX-]*|block[a-z]*\s+)(\d{3,4})\b"""
     )
 
     // Merchant extraction patterns for bank SMS
+    private val MERCHANT_AFTER_DATE_PATTERN = Pattern.compile(
+        """(?i)\bon\s+\d{1,2}[-/][A-Za-z0-9]{2,3}[-/]\d{2,4}(?:\s+at\s+\d{1,2}:\d{2}(?::\d{2})?)?\s+on\s+([A-Za-z0-9@_&/-][A-Za-z0-9@_.\s&/-]{0,40})"""
+    )
     private val MERCHANT_AT_PATTERN = Pattern.compile(
         """(?i)\b(?:at|to\s+vpa|to\s+upi|to|info:\s*upi/?)\s*([A-Za-z0-9@_&/-][A-Za-z0-9@_.\s&/-]{0,40})"""
     )
     private val MERCHANT_DELIMITER = Pattern.compile(
-        """(?i)\s+(?:on|ref|upi|avail|bal|total|using|via)\b"""
+        """(?i)\s+(?:on|ref|upi|avail|avl\s+limit|avl|limit|bal|total|using|via)\b"""
     )
 
     // GPay patterns:
@@ -125,9 +128,20 @@ object TransactionParser {
         val accountRef = if (accountMatcher.find()) accountMatcher.group(1) else null
 
         // 6. Extract Merchant / Payee
-        val merchantMatcher = MERCHANT_AT_PATTERN.matcher(clean)
-        val rawMerchant = if (merchantMatcher.find()) {
-            var raw = merchantMatcher.group(1)?.trim() ?: ""
+        // Strip fraud/support disclaimer text before extracting merchant so phone numbers (e.g. "call 1800... to 9215676766") are never matched
+        val merchantSearchText = clean.split(Regex("""(?i)\b(?:if\s+not\s+you|not\s+you\?|not\s+you\b|to\s+block|call\s+\d+|sms\s+block)""")).first().trim()
+
+        val afterDateMatcher = MERCHANT_AFTER_DATE_PATTERN.matcher(merchantSearchText)
+        val atMatcher = MERCHANT_AT_PATTERN.matcher(merchantSearchText)
+        val rawMerchant = if (afterDateMatcher.find()) {
+            var raw = afterDateMatcher.group(1)?.trim() ?: ""
+            val delimMatcher = MERCHANT_DELIMITER.matcher(raw)
+            if (delimMatcher.find()) {
+                raw = raw.substring(0, delimMatcher.start()).trim()
+            }
+            raw.trimEnd('.', ',', ';', ' ')
+        } else if (atMatcher.find()) {
+            var raw = atMatcher.group(1)?.trim() ?: ""
             val delimMatcher = MERCHANT_DELIMITER.matcher(raw)
             if (delimMatcher.find()) {
                 raw = raw.substring(0, delimMatcher.start()).trim()

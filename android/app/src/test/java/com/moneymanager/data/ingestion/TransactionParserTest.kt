@@ -216,5 +216,31 @@ class TransactionParserTest {
         assertEquals(true, TransactionParser.isReasonableNote("Dinner with friends"))
         assertEquals(true, TransactionParser.isReasonableNote("Uber Ride"))
     }
+
+    @Test
+    fun `parses HDFC Pixel Play Credit Card transaction via UPI SMS`() {
+        val sms = "A transaction of Rs. 350.00 was made using your HDFC Bank Pixel Play Credit Card at wl0505241a0037198@unionbank via UPI 129904356266 on 19/09/26 at 21:49. Not you? Block your Card: https://1.hdfc.bank.in/HDFCBK/s/qm2WJ0PP or SMS BLOCKPCC 4884 to 8433642286"
+        val result = TransactionParser.parseSms(sms, timestamp, zone)
+
+        assertTrue(result is ParsedTransaction.Expense)
+        val expense = result as ParsedTransaction.Expense
+        assertEquals(BigDecimal("350.00"), expense.amount)
+        assertEquals("wl0505241a0037198@unionbank", expense.merchant)
+        assertEquals("4884", expense.accountRef)
+        assertEquals(null, expense.note)
+    }
+
+    @Test
+    fun `parses ICICI Bank Card SMS with after-date merchant and available limit`() {
+        val sms = "INR 1,080.90 spent using ICICI Bank Card XX4006 on 10-Sep-26 on ANGAALAMMAM FUE. Avl Limit: INR 21,919.10. If not you, call 1800 2662/SMS BLOCK 4006 to 9215676766."
+        val result = TransactionParser.parseSms(sms, timestamp, zone)
+
+        assertTrue(result is ParsedTransaction.Expense)
+        val expense = result as ParsedTransaction.Expense
+        assertEquals(BigDecimal("1080.90"), expense.amount)
+        assertEquals("ANGAALAMMAM FUE", expense.merchant)
+        assertEquals("4006", expense.accountRef)
+        assertEquals(null, expense.note)
+    }
 }
 

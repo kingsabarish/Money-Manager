@@ -55,6 +55,12 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE amount = :amount AND date = :date AND (note = :note OR (:note IS NULL AND note IS NULL)) LIMIT 1")
     suspend fun findMatching(amount: java.math.BigDecimal, date: java.time.LocalDate, note: String?): TransactionEntity?
 
+    @Query("SELECT accountId FROM transactions WHERE merchant = :merchant AND isApproved = 1 ORDER BY date DESC, id DESC LIMIT 5")
+    suspend fun getRecentAccountIdsForMerchant(merchant: String): List<Long>
+
+    @Query("SELECT accountId FROM transactions WHERE isApproved = 1 GROUP BY accountId ORDER BY COUNT(*) DESC LIMIT 1")
+    suspend fun getMostUsedAccountId(): Long?
+
     @Query("UPDATE transactions SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
     suspend fun remapCategory(oldCategoryId: Long, newCategoryId: Long)
 }

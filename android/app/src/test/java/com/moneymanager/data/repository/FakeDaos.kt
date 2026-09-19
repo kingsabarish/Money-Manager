@@ -206,4 +206,18 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
             if (it.categoryId == oldCategoryId) it.copy(categoryId = newCategoryId) else it
         }
     }
+
+    override suspend fun getRecentAccountIdsForMerchant(merchant: String): List<Long> =
+        db.transactions.value
+            .filter { it.isApproved && it.merchant == merchant }
+            .sortedWith(compareByDescending<TransactionEntity> { it.date }.thenByDescending { it.id })
+            .take(5)
+            .map { it.accountId }
+
+    override suspend fun getMostUsedAccountId(): Long? =
+        db.transactions.value
+            .filter { it.isApproved }
+            .groupBy { it.accountId }
+            .maxByOrNull { it.value.size }
+            ?.key
 }

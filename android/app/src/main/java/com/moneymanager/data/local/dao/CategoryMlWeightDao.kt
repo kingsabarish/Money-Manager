@@ -15,6 +15,12 @@ interface CategoryMlWeightDao {
     @Query("SELECT * FROM category_ml_weights")
     suspend fun getAllWeights(): List<CategoryMlWeightEntity>
 
+    @Query("SELECT COUNT(*) FROM category_ml_weights")
+    suspend fun getCount(): Int
+
+    @androidx.room.Insert(onConflict = androidx.room.OnConflictStrategy.REPLACE)
+    suspend fun insertAll(weights: List<CategoryMlWeightEntity>)
+
     @Query("""
         INSERT INTO category_ml_weights (featureKey, categoryId, count, lastUpdatedEpochMs)
         VALUES (:featureKey, :categoryId, 1, :timestamp)

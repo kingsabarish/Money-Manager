@@ -37,6 +37,7 @@ data class HomeUiState(
     val loading: Boolean = true,
     val month: YearMonth = YearMonth.now(),
     val monthTotal: BigDecimal = BigDecimal.ZERO,
+    val unapprovedCount: Int = 0,
     val sections: List<DaySection> = emptyList(),
 ) {
     val isEmpty: Boolean get() = !loading && sections.isEmpty()
@@ -58,7 +59,8 @@ class TransactionsViewModel
                 categoryRepository.observeAll(),
                 accountRepository.observeAll(),
                 selectedMonth,
-            ) { transactions, categories, accounts, month ->
+                transactionRepository.observeUnapprovedCount(),
+            ) { transactions, categories, accounts, month, unapprovedCount ->
                 val categoryNames = categories.associate { it.id to it.name }
                 val accountNames = accounts.associate { it.id to it.name }
 
@@ -92,6 +94,7 @@ class TransactionsViewModel
                     month = month,
                     monthTotal =
                         monthTransactions.fold(BigDecimal.ZERO) { acc, t -> acc + t.amount },
+                    unapprovedCount = unapprovedCount,
                     sections = sections,
                 )
             }.stateIn(

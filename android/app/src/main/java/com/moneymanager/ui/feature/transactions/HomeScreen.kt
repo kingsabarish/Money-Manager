@@ -49,6 +49,7 @@ import java.time.YearMonth
 fun HomeScreen(
     onAddExpense: () -> Unit,
     onEditExpense: (Long) -> Unit,
+    onNavigateToUnapproved: () -> Unit = {},
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -56,6 +57,7 @@ fun HomeScreen(
         state = uiState,
         onAddExpense = onAddExpense,
         onEditExpense = onEditExpense,
+        onNavigateToUnapproved = onNavigateToUnapproved,
         onPreviousMonth = viewModel::previousMonth,
         onNextMonth = viewModel::nextMonth,
     )
@@ -67,6 +69,7 @@ private fun HomeScreenContent(
     state: HomeUiState,
     onAddExpense: () -> Unit,
     onEditExpense: (Long) -> Unit,
+    onNavigateToUnapproved: () -> Unit,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
 ) {
@@ -99,6 +102,47 @@ private fun HomeScreenContent(
                 onNext = onNextMonth,
                 subtitle = state.monthTotal.formatAsCurrency(),
             )
+
+            if (state.unapprovedCount > 0) {
+                androidx.compose.material3.Card(
+                    onClick = onNavigateToUnapproved,
+                    colors =
+                        androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        ),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "${state.unapprovedCount} unapproved expense${if (state.unapprovedCount > 1) "s" else ""}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            )
+                            Text(
+                                text = "Tap to review auto-detected transactions",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        androidx.compose.material3.TextButton(onClick = onNavigateToUnapproved) {
+                            Text(
+                                "Review",
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
+                    }
+                }
+            }
+
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     state.isEmpty ->
@@ -211,6 +255,7 @@ private fun HomeScreenPreview() {
                     ),
                 onAddExpense = {},
                 onEditExpense = {},
+                onNavigateToUnapproved = {},
                 onPreviousMonth = {},
                 onNextMonth = {},
             )

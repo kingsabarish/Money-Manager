@@ -118,25 +118,34 @@ private fun CategoryPickerBottomSheet(
         Row(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(topLevel, key = { it.id }) { cat ->
+                    val hasChildren = !childrenByParent[cat.id].isNullOrEmpty()
                     MasterRow(
                         name = cat.name,
                         highlighted = cat.id == highlightedId,
-                        hasChildren = !childrenByParent[cat.id].isNullOrEmpty(),
-                        onClick = { highlightedId = cat.id },
+                        hasChildren = hasChildren,
+                        onClick = {
+                            highlightedId = cat.id
+                            if (!hasChildren) {
+                                onSelected(cat.id)
+                            }
+                        },
                     )
                 }
             }
             VerticalDivider()
             LazyColumn(modifier = Modifier.weight(1f)) {
                 if (highlighted != null) {
+                    val hasChildren = !childrenByParent[highlighted.id].isNullOrEmpty()
                     item(key = "parent-${highlighted.id}") {
                         DetailRow(
                             name = highlighted.name,
-                            caption = "Main category",
+                            caption = if (hasChildren) "General (No subcategory)" else "Main category",
                             selected = highlighted.id == selectedId,
                             onClick = { onSelected(highlighted.id) },
                         )
-                        HorizontalDivider()
+                        if (hasChildren) {
+                            HorizontalDivider()
+                        }
                     }
                     items(childrenByParent[highlighted.id].orEmpty(), key = { it.id }) { child ->
                         DetailRow(

@@ -32,6 +32,8 @@ class TestSmsReceiver : BroadcastReceiver() {
 
         fun categoryDao(): CategoryDao
 
+        fun accountResolutionEngine(): com.moneymanager.data.account.AccountResolutionEngine
+
         fun notificationManager(): TransactionNotificationManager
     }
 
@@ -62,23 +64,14 @@ class TestSmsReceiver : BroadcastReceiver() {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                // 1. Resolve Account
-                var allAccounts = entryPoint.accountDao().getAll()
+                // 1. Resolve Account via dynamic AccountResolutionEngine
                 val account =
-                    if (allAccounts.isEmpty()) {
-                        val newId = entryPoint.accountDao().insert(
-                            com.moneymanager.data.local.entity.AccountEntity(name = "Bank", parentId = null)
-                        )
-                        entryPoint.accountDao().getById(newId)
-                    } else {
-                        val matched =
-                            if (parsed.accountRef != null) {
-                                allAccounts.firstOrNull { it.name.contains(parsed.accountRef, ignoreCase = true) }
-                            } else {
-                                null
-                            }
-                        matched ?: allAccounts.first()
-                    } ?: return@launch
+                    entryPoint.accountResolutionEngine().resolveAccount(
+                        rawText = parsed.rawText,
+                        accountRef = parsed.accountRef,
+                        merchant = parsed.merchant,
+                        amount = parsed.amount,
+                    )
 
                 android.util.Log.i("MoneyManager", "Resolved account: ${account.name} (id=${account.id})")
 

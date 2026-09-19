@@ -113,6 +113,7 @@ class SmsTransactionReceiver : BroadcastReceiver() {
                         categoryId = category.id,
                         accountId = account.id,
                         note = reasonableNote,
+                        merchant = parsed.merchant,
                     )
 
                 android.util.Log.i("MoneyManager", "SMS addAutoExpense result: $addResult")

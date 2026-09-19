@@ -200,4 +200,10 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
         db.transactions.value.firstOrNull {
             it.amount.compareTo(amount) == 0 && it.date == date && it.note == note
         }
+
+    override suspend fun remapCategory(oldCategoryId: Long, newCategoryId: Long) {
+        db.transactions.value = db.transactions.value.map {
+            if (it.categoryId == oldCategoryId) it.copy(categoryId = newCategoryId) else it
+        }
+    }
 }

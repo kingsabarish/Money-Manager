@@ -121,6 +121,7 @@ class TestSmsReceiver : BroadcastReceiver() {
                         categoryId = category.id,
                         accountId = account.id,
                         note = reasonableNote,
+                        merchant = parsed.merchant,
                     )
 
                 android.util.Log.i("MoneyManager", "addAutoExpense result: $addResult")

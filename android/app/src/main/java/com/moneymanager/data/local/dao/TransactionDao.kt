@@ -54,4 +54,7 @@ interface TransactionDao {
 
     @Query("SELECT * FROM transactions WHERE amount = :amount AND date = :date AND (note = :note OR (:note IS NULL AND note IS NULL)) LIMIT 1")
     suspend fun findMatching(amount: java.math.BigDecimal, date: java.time.LocalDate, note: String?): TransactionEntity?
+
+    @Query("UPDATE transactions SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
+    suspend fun remapCategory(oldCategoryId: Long, newCategoryId: Long)
 }

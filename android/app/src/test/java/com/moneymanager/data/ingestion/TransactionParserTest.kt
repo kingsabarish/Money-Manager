@@ -183,7 +183,7 @@ class TransactionParserTest {
         assertTrue(result is ParsedTransaction.Expense)
         val expense = result as ParsedTransaction.Expense
         assertEquals(BigDecimal("500.00"), expense.amount)
-        assertEquals("Transfer", expense.merchant)
+        assertEquals("A/c 987654321012", expense.merchant)
         assertEquals(null, expense.note)
         assertEquals(false, TransactionParser.isReasonableNote(expense.merchant))
     }
@@ -196,8 +196,9 @@ class TransactionParserTest {
         assertTrue(result is ParsedTransaction.Expense)
         val expense = result as ParsedTransaction.Expense
         assertEquals(BigDecimal("200.00"), expense.amount)
-        assertEquals("Transfer", expense.merchant)
+        assertEquals("9876543210@paytm", expense.merchant)
         assertEquals(null, expense.note)
+        assertEquals(false, TransactionParser.isReasonableNote(expense.merchant))
     }
 
     @Test

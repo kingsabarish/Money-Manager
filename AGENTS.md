@@ -92,6 +92,25 @@ Persistence:
   - `cab`, `auto`, and `Rapido` are combined into **`Cab / Auto`**.
   - `Bus` is converted to **`Public Transport`**.
   - `DatabaseSeeder` and `SnapshotCodec` normalize these categories automatically.
+- **Account resolution hierarchy** (`AccountResolutionEngine`):
+  - **Priority 1: Explicit Account Reference / Name Match (Highest)**:
+    Matches explicit card/account references (e.g. `4884`, `4006`) in account names,
+    or matches full account name phrases and multi-word token overlap (e.g.
+    `Pixel Credit Card` matching `HDFC Bank Pixel Play Credit Card`).
+  - **Priority 2: Payee / Merchant Transaction History (Medium)**:
+    Queries `TransactionDao.getRecentAccountIdsForMerchant(merchant)` to pick the
+    account previously used by the user for that payee.
+  - **Priority 3: Semantic Instrument Scoring & Fallback (Lowest)**:
+    Scores accounts based on payment instrument keywords in the message (Card vs.
+    Bank vs. Cash). Card accounts score highest on credit card messages; bank
+    accounts are not chosen for card transactions. Falls back to the user's
+    most frequently used account (`TransactionDao.getMostUsedAccountId()`).
+- **Bundled / multi-message notifications**:
+  - `TransactionNotificationListenerService` unpacks `MessagingStyle` messages
+    (`android.messages`) and `InboxStyle` lines (`android.textLines`), capturing
+    all messages in a notification bundle rather than just the latest.
+  - Deduplication tracks unique transaction signatures and checks `findMatching()`
+    in SQLite to avoid duplicates when notification threads update.
 
 Stack & tooling:
 

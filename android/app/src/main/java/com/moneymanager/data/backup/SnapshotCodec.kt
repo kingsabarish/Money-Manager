@@ -50,22 +50,41 @@ object SnapshotCodec {
                         accountId = it.accountId,
                         note = it.note,
                         isApproved = it.isApproved,
+                        merchant = it.merchant,
                     )
                 },
         )
 
     /** Categories mapped to entities, parents (parentId == null) first for FK order. */
-    fun categoryEntities(snapshot: BackupSnapshot): List<CategoryEntity> =
-        snapshot.categories
-            .sortedBy { it.parentId != null }
+    fun categoryEntities(snapshot: BackupSnapshot): List<CategoryEntity> {
+        val rawCategories = snapshot.categories.sortedBy { it.parentId != null }
+        val busCategory = rawCategories.firstOrNull { it.name.equals("Bus", ignoreCase = true) }
+        val cabCategories = rawCategories.filter {
+            it.name.equals("cab", ignoreCase = true) ||
+                it.name.equals("auto", ignoreCase = true) ||
+                it.name.equals("rapido", ignoreCase = true) ||
+                it.name.equals("Cab / Auto", ignoreCase = true)
+        }
+        val targetCabAuto = cabCategories.firstOrNull()
+        val redundantCabIds = cabCategories.drop(1).map { it.id }.toSet()
+
+        return rawCategories
+            .filterNot { it.id in redundantCabIds }
             .map {
+                val normalizedName =
+                    when {
+                        it.id == busCategory?.id -> "Public Transport"
+                        it.id == targetCabAuto?.id -> "Cab / Auto"
+                        else -> it.name
+                    }
                 CategoryEntity(
                     id = it.id,
-                    name = it.name,
+                    name = normalizedName,
                     parentId = it.parentId,
                     type = TransactionType.valueOf(it.type),
                 )
             }
+    }
 
     /** Accounts mapped to entities, parents first for FK order. */
     fun accountEntities(snapshot: BackupSnapshot): List<AccountEntity> =
@@ -73,17 +92,35 @@ object SnapshotCodec {
             .sortedBy { it.parentId != null }
             .map { AccountEntity(id = it.id, name = it.name, parentId = it.parentId) }
 
-    fun transactionEntities(snapshot: BackupSnapshot): List<TransactionEntity> =
-        snapshot.transactions.map {
+    fun transactionEntities(snapshot: BackupSnapshot): List<TransactionEntity> {
+        val rawCategories = snapshot.categories
+        val cabCategories = rawCategories.filter {
+            it.name.equals("cab", ignoreCase = true) ||
+                it.name.equals("auto", ignoreCase = true) ||
+                it.name.equals("rapido", ignoreCase = true) ||
+                it.name.equals("Cab / Auto", ignoreCase = true)
+        }
+        val targetCabAutoId = cabCategories.firstOrNull()?.id
+        val redundantCabIds = cabCategories.drop(1).map { it.id }.toSet()
+
+        return snapshot.transactions.map {
+            val normalizedCatId =
+                if (it.categoryId in redundantCabIds && targetCabAutoId != null) {
+                    targetCabAutoId
+                } else {
+                    it.categoryId
+                }
             TransactionEntity(
                 id = it.id,
                 type = TransactionType.valueOf(it.type),
                 date = LocalDate.parse(it.date),
                 amount = BigDecimal(it.amount),
-                categoryId = it.categoryId,
+                categoryId = normalizedCatId,
                 accountId = it.accountId,
                 note = it.note,
                 isApproved = it.isApproved,
+                merchant = it.merchant,
             )
         }
+    }
 }

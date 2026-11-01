@@ -185,3 +185,29 @@ layer's purpose. The UI depends only on repository **interfaces**
 the boundary as a sealed `AppResult`. Because there is no server to backstop
 them, the two-level category/account depth, duplicate-name, and guarded-delete
 invariants are enforced in the repository layer.
+
+## Transaction Ingestion & Adaptive Categorization
+
+The app automatically intercepts incoming debit bank SMS alerts and Google Pay split push notifications:
+
+- **Ingestion Components** (`data/ingestion/`):
+  - `SmsTransactionReceiver`: catches bank debit SMS broadcasts (`android.provider.Telephony.SMS_RECEIVED`).
+  - `TransactionNotificationListenerService`: parses incoming Google Pay push notifications for split requests (`Food - for-eggs`).
+  - `TransactionParser`: parses debit amounts, merchant/payee identities, and note descriptions without polluting user notes with internal account numbers or references.
+  - Interactive status notifications: allow immediate approval or deletion directly from the Android shade.
+
+- **Adaptive Categorization Engine** (`data/categorization/`):
+  - **Priority 1: Explicit Category in Group / Note (Highest Priority)**:
+    - Directly matches category names (ignoring emoji prefixes).
+    - Subcategories are evaluated strictly: explicit meal keywords (`breakfast`, `lunch`, `dinner`, `snacks`) or transport keywords assign a subcategory; generic items (like `egg`, `dosa`, `biryani`) land strictly at the top-level parent (e.g. `Food`) with `subCategoryId = null`.
+  - **Priority 2: User Transaction History & Online Learned Weights (Medium Priority)**:
+    - Evaluates on-device ML weights (`CategoryMlWeightDao`) trained on your past approved transactions and manual edits. Merchant and friend payee account mappings take high precedence.
+  - **Priority 3: Seeded Keyword Dictionary & Business Suffixes (Lowest Priority)**:
+    - Pre-seeded keyword dictionary derived from 1,980+ historical transactions for known delivery apps, retail chains, and utility providers.
+    - Business suffix heuristics (`...foods`, `...bakes`, `...fuels`, `...pharma`).
+    - Fallback to `Other` / `Others`.
+
+- **Normalized Subcategories**:
+  - `Cab`, `auto`, and `Rapido` are consolidated under `Cab / Auto`.
+  - `Bus` is converted to `Public Transport`.
+

@@ -48,6 +48,7 @@ class TransactionRepositoryImpl
             categoryId: Long,
             accountId: Long,
             note: String?,
+            merchant: String?,
         ): AppResult<Transaction> {
             validate(amount, categoryId, accountId)?.let { return fail(it) }
 
@@ -60,6 +61,7 @@ class TransactionRepositoryImpl
                     accountId = accountId,
                     note = note?.takeIf { it.isNotBlank() },
                     isApproved = true,
+                    merchant = merchant?.takeIf { it.isNotBlank() },
                 )
             val id = transactionDao.insert(entity)
             return entity.copy(id = id).toDomain().asSuccess()
@@ -71,6 +73,7 @@ class TransactionRepositoryImpl
             categoryId: Long,
             accountId: Long,
             note: String?,
+            merchant: String?,
         ): AppResult<Transaction> {
             validate(amount, categoryId, accountId)?.let { return fail(it) }
 
@@ -83,6 +86,7 @@ class TransactionRepositoryImpl
                     accountId = accountId,
                     note = note?.takeIf { it.isNotBlank() },
                     isApproved = false,
+                    merchant = merchant?.takeIf { it.isNotBlank() },
                 )
             val id = transactionDao.insert(entity)
             return entity.copy(id = id).toDomain().asSuccess()
@@ -95,6 +99,7 @@ class TransactionRepositoryImpl
             categoryId: Long,
             accountId: Long,
             note: String?,
+            merchant: String?,
         ): AppResult<Transaction> {
             val existing = transactionDao.getById(id) ?: return fail(AppError.NotFound)
             validate(amount, categoryId, accountId)?.let { return fail(it) }
@@ -107,6 +112,7 @@ class TransactionRepositoryImpl
                     accountId = accountId,
                     note = note?.takeIf { it.isNotBlank() },
                     isApproved = true,
+                    merchant = merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
                 )
             transactionDao.update(updated)
             return updated.toDomain().asSuccess()

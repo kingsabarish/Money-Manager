@@ -46,7 +46,7 @@ class TransactionActionReceiver : BroadcastReceiver() {
                             entryPoint.transactionRepository().approve(transactionId)
                             // Reinforce ML weights with confirmed category
                             entryPoint.categorizationEngine().train(
-                                merchant = txn.note ?: "",
+                                merchant = txn.merchant ?: txn.note ?: "",
                                 note = txn.note,
                                 amount = txn.amount,
                                 assignedCategoryId = txn.categoryId,

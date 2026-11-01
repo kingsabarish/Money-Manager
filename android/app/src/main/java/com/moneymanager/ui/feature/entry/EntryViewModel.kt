@@ -60,12 +60,15 @@ class EntryViewModel
         private val _uiState = MutableStateFlow(EntryUiState(isEditing = editingId != null))
         val uiState: StateFlow<EntryUiState> = _uiState.asStateFlow()
 
+        private var editingMerchant: String? = null
+
         init {
             if (editingId != null) {
                 viewModelScope.launch {
                     val result = transactionRepository.getById(editingId)
                     if (result is AppResult.Success) {
                         val t = result.data
+                        editingMerchant = t.merchant
                         _uiState.update { state ->
                             state.copy(
                                 amountText = t.amount.toPlainString(),
@@ -161,27 +164,39 @@ class EntryViewModel
                                 categoryId = categoryId,
                                 accountId = accountId,
                                 note = state.note,
+                                merchant = editingMerchant,
                             )
                         if (updateRes is AppResult.Success) {
                             notificationManager.cancelNotification(editingId.toInt())
-                            if (!state.note.isNullOrBlank()) {
-                                categorizationEngine.train(
-                                    merchant = state.note,
-                                    note = state.note,
-                                    amount = amount,
-                                    assignedCategoryId = categoryId,
-                                )
-                            }
+                            val trainMerchant = editingMerchant ?: state.note.takeIf { it.isNotBlank() } ?: ""
+                            categorizationEngine.train(
+                                merchant = trainMerchant,
+                                note = state.note.takeIf { it.isNotBlank() },
+                                amount = amount,
+                                date = state.date,
+                                assignedCategoryId = categoryId,
+                            )
                         }
                         updateRes
                     } else {
-                        transactionRepository.addExpense(
-                            amount = amount,
-                            date = state.date,
-                            categoryId = categoryId,
-                            accountId = accountId,
-                            note = state.note,
-                        )
+                        val addRes =
+                            transactionRepository.addExpense(
+                                amount = amount,
+                                date = state.date,
+                                categoryId = categoryId,
+                                accountId = accountId,
+                                note = state.note,
+                            )
+                        if (addRes is AppResult.Success && !state.note.isNullOrBlank()) {
+                            categorizationEngine.train(
+                                merchant = state.note,
+                                note = state.note,
+                                amount = amount,
+                                date = state.date,
+                                assignedCategoryId = categoryId,
+                            )
+                        }
+                        addRes
                     }
                 when (result) {
                     is AppResult.Success -> _uiState.update { it.copy(saving = false, saved = true) }

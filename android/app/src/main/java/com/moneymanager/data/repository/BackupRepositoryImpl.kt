@@ -29,6 +29,7 @@ class BackupRepositoryImpl
         private val categoryDao: CategoryDao,
         private val accountDao: AccountDao,
         private val transactionDao: TransactionDao,
+        private val categorizationEngine: com.moneymanager.data.categorization.CategorizationEngine,
     ) : com.moneymanager.domain.repository.BackupRepository {
         override suspend fun exportToJson(): AppResult<String> =
             runCatching {
@@ -75,6 +76,10 @@ class BackupRepositoryImpl
                     accountDao.insertAll(SnapshotCodec.accountEntities(snapshot))
                     transactionDao.insertAll(SnapshotCodec.transactionEntities(snapshot))
                 }
+                categorizationEngine.seedFromTransactions(
+                    SnapshotCodec.transactionEntities(snapshot),
+                    SnapshotCodec.categoryEntities(snapshot),
+                )
             }.fold(
                 onSuccess = { Unit.asSuccess() },
                 onFailure = { fail(AppError.Unknown(it.message ?: "Restore failed")) },

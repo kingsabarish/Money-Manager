@@ -28,6 +28,7 @@ data class UnapprovedItem(
     val accountId: Long,
     val accountName: String,
     val note: String?,
+    val merchant: String? = null,
 )
 
 data class UnapprovedUiState(
@@ -76,6 +77,7 @@ class UnapprovedTransactionsViewModel
                             accountId = txn.accountId,
                             accountName = accountMap[txn.accountId] ?: "Unknown",
                             note = txn.note,
+                            merchant = txn.merchant,
                         )
                     }
 
@@ -92,7 +94,7 @@ class UnapprovedTransactionsViewModel
                 notificationManager.cancelNotification(item.id.toInt())
                 // Reinforce ML model
                 categorizationEngine.train(
-                    merchant = item.note ?: "",
+                    merchant = item.merchant ?: item.note ?: "",
                     note = item.note,
                     amount = item.amount,
                     assignedCategoryId = item.categoryId,
@@ -114,7 +116,7 @@ class UnapprovedTransactionsViewModel
                 for (item in currentItems) {
                     notificationManager.cancelNotification(item.id.toInt())
                     categorizationEngine.train(
-                        merchant = item.note ?: "",
+                        merchant = item.merchant ?: item.note ?: "",
                         note = item.note,
                         amount = item.amount,
                         assignedCategoryId = item.categoryId,
@@ -123,4 +125,3 @@ class UnapprovedTransactionsViewModel
             }
         }
     }
-

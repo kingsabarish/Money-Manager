@@ -28,7 +28,10 @@ object DatabaseModule {
             MoneyManagerDatabase::class.java,
             MoneyManagerDatabase.NAME,
         )
-            .addMigrations(MoneyManagerDatabase.MIGRATION_1_2)
+            .addMigrations(
+                MoneyManagerDatabase.MIGRATION_1_2,
+                MoneyManagerDatabase.MIGRATION_2_3,
+            )
             .fallbackToDestructiveMigration(dropAllTables = true)
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()

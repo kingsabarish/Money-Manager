@@ -118,6 +118,28 @@ class TransactionRepositoryImpl
             return updated.toDomain().asSuccess()
         }
 
+        override suspend fun updateUnapprovedPrediction(
+            id: Long,
+            categoryId: Long,
+            merchant: String?,
+            note: String?,
+        ): AppResult<Transaction> {
+            val existing = transactionDao.getById(id) ?: return fail(AppError.NotFound)
+            if (categoryDao.getById(categoryId) == null) {
+                return fail(AppError.Validation("Category $categoryId does not exist"))
+            }
+
+            val updated =
+                existing.copy(
+                    categoryId = categoryId,
+                    note = note?.takeIf { it.isNotBlank() } ?: existing.note,
+                    merchant = merchant?.takeIf { it.isNotBlank() } ?: existing.merchant,
+                    isApproved = false,
+                )
+            transactionDao.update(updated)
+            return updated.toDomain().asSuccess()
+        }
+
         override suspend fun approve(id: Long): AppResult<Unit> {
             val existing = transactionDao.getById(id) ?: return fail(AppError.NotFound)
             transactionDao.setApproved(existing.id, true)

@@ -41,6 +41,10 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 // Export the Room schema to android/app/schemas/ so migrations can be authored
@@ -111,6 +115,10 @@ dependencies {
     // Google Drive backup (Google Identity Services auth + Drive REST over OkHttp)
     implementation(libs.play.services.auth)
     implementation(libs.okhttp)
+
+    // On-device AI (Gemini Nano via AICore)
+
+    implementation(libs.mlkit.genai.prompt)
 
     // Testing
     testImplementation(libs.junit)

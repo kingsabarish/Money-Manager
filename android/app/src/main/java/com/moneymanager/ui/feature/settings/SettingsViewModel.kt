@@ -5,6 +5,7 @@ import android.content.IntentSender
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.moneymanager.data.categorization.CategorizationEngine
 import com.moneymanager.domain.model.AppError
 import com.moneymanager.domain.model.AppResult
 import com.moneymanager.domain.model.AppSettings
@@ -56,6 +57,13 @@ data class SettingsUiState(
     val statusSource: BackupSource = BackupSource.FILE,
     val backupFrequency: BackupFrequency = BackupFrequency.MANUAL,
     val driveRestoreOptions: List<BackupEntry>? = null,
+    val isAiCoreSupported: Boolean = false,
+    val isAiCoreChecking: Boolean = true,
+)
+
+private data class AiStatus(
+    val isSupported: Boolean,
+    val isChecking: Boolean,
 )
 
 @HiltViewModel
@@ -67,10 +75,19 @@ class SettingsViewModel
         private val backupRepository: BackupRepository,
         private val driveBackup: GoogleDriveBackup,
         private val backupScheduler: BackupScheduler,
+        private val categorizationEngine: CategorizationEngine,
     ) : ViewModel() {
         private val status = MutableStateFlow<BackupStatus>(BackupStatus.Idle)
         private val statusSource = MutableStateFlow(BackupSource.FILE)
         private val driveRestoreOptions = MutableStateFlow<List<BackupEntry>?>(null)
+        private val aiStatus = MutableStateFlow(AiStatus(isSupported = false, isChecking = true))
+
+        init {
+            viewModelScope.launch {
+                val supported = categorizationEngine.isAiCoreSupported()
+                aiStatus.value = AiStatus(isSupported = supported, isChecking = false)
+            }
+        }
 
         private val consentRequestsFlow = MutableSharedFlow<IntentSender>(extraBufferCapacity = 1)
 
@@ -87,7 +104,9 @@ class SettingsViewModel
                 status,
                 statusSource,
                 driveRestoreOptions,
-            ) { settings, status, statusSource, restoreOptions ->
+                aiStatus,
+
+            ) { settings, status, statusSource, restoreOptions, ai ->
                 SettingsUiState(
                     themeMode = settings.themeMode,
                     dynamicColor = settings.dynamicColor,
@@ -97,6 +116,8 @@ class SettingsViewModel
                     statusSource = statusSource,
                     backupFrequency = settings.backupFrequency,
                     driveRestoreOptions = restoreOptions,
+                    isAiCoreSupported = ai.isSupported,
+                    isAiCoreChecking = ai.isChecking,
                 )
             }.stateIn(
                 scope = viewModelScope,

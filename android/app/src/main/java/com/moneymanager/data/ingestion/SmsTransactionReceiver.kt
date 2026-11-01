@@ -66,57 +66,43 @@ class SmsTransactionReceiver : BroadcastReceiver() {
 
                 android.util.Log.i("MoneyManager", "SMS Resolved account: ${account.name} (id=${account.id})")
 
-                // 2. Predict Category via ML CategorizationEngine
-                val allCategories = entryPoint.categoryDao().getAll()
-                val finalCategoryId =
-                    if (allCategories.isEmpty()) {
-                        entryPoint.categoryDao().insert(
-                            com.moneymanager.data.local.entity.CategoryEntity(
-                                name = "Other",
-                                parentId = null,
-                                type = com.moneymanager.domain.model.TransactionType.EXPENSE,
-                            )
-                        )
-                    } else {
-                        val catResult =
-                            entryPoint.categorizationEngine().predictCategory(
-                                merchant = parsed.merchant,
-                                note = parsed.note,
-                                amount = parsed.amount,
-                                date = parsed.date,
-                            )
-                        catResult.finalCategoryId
-                    }
-
-                val category = entryPoint.categoryDao().getById(finalCategoryId) ?: return@launch
-                android.util.Log.i("MoneyManager", "SMS Resolved category: ${category.name} (id=${category.id})")
+                // 2. Predict Category, Subcategory, Note, and Payee via ReAct agent
+                val catResult =
+                    entryPoint.categorizationEngine().predictCategory(
+                        rawMessage = parsed.rawText,
+                        source = parsed.source,
+                        amount = parsed.amount,
+                        fallbackMerchant = parsed.merchant,
+                        fallbackNote = parsed.note,
+                        date = parsed.date,
+                    )
+                val isSupported = entryPoint.categorizationEngine().isAiCoreSupported()
+                val category = entryPoint.categoryDao().getById(catResult.finalCategoryId) ?: return@launch
+                val noteToSave = catResult.predictedNote.takeIf { it.isNotBlank() }
+                val merchantToSave = if (catResult.confidence == 0f && isSupported) parsed.rawText else catResult.predictedMerchant
+                android.util.Log.i("MoneyManager", "SMS Resolved category: ${category.name} (id=${category.id}), merchant: $merchantToSave, note: $noteToSave")
 
                 // 3. Save auto-detected expense with isApproved = false
-                val reasonableNote =
-                    when {
-                        TransactionParser.isReasonableNote(parsed.note) -> parsed.note
-                        TransactionParser.isReasonableNote(parsed.merchant) -> parsed.merchant
-                        else -> null
-                    }
                 val addResult =
                     entryPoint.transactionRepository().addAutoExpense(
                         amount = parsed.amount,
                         date = parsed.date,
                         categoryId = category.id,
                         accountId = account.id,
-                        note = reasonableNote,
-                        merchant = parsed.merchant,
+                        note = noteToSave,
+                        merchant = merchantToSave,
                     )
 
                 android.util.Log.i("MoneyManager", "SMS addAutoExpense result: $addResult")
 
                 // 4. Post interactive notification
                 if (addResult is AppResult.Success) {
+                    val notifMerchant = if (catResult.confidence == 0f && isSupported) parsed.merchant else merchantToSave
                     android.util.Log.i("MoneyManager", "SMS Posting notification for ${addResult.data.id}")
                     entryPoint.notificationManager().showTransactionNotification(
                         transactionId = addResult.data.id,
                         amount = addResult.data.amount,
-                        merchant = parsed.merchant,
+                        merchant = notifMerchant,
                         categoryName = category.name,
                         accountName = account.name,
                         note = addResult.data.note,
@@ -130,4 +116,3 @@ class SmsTransactionReceiver : BroadcastReceiver() {
         }
     }
 }
-

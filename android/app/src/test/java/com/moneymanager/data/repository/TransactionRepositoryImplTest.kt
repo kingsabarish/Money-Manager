@@ -155,6 +155,29 @@ class TransactionRepositoryImplTest {
         }
 
     @Test
+    fun `updateUnapprovedPrediction updates category and note while preserving isApproved false`() =
+        runTest {
+            val tx =
+                (repo.addAutoExpense(BigDecimal("50.00"), LocalDate.of(2026, 9, 19), 1, 1, null)
+                    as AppResult.Success).data
+            assertTrue(!tx.isApproved)
+
+            val updateResult =
+                repo.updateUnapprovedPrediction(
+                    id = tx.id,
+                    categoryId = 1,
+                    merchant = "Swiggy",
+                    note = "Dinner",
+                )
+            assertTrue(updateResult is AppResult.Success)
+            val updated = (updateResult as AppResult.Success).data
+            assertEquals("Swiggy", updated.merchant)
+            assertEquals("Dinner", updated.note)
+            assertTrue(!updated.isApproved)
+            assertTrue(!db.transactions.value.single().isApproved)
+        }
+
+    @Test
     fun `approve marks an unapproved expense as approved`() =
         runTest {
             val tx =

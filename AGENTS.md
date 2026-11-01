@@ -81,6 +81,40 @@ Persistence:
     cashback) are classified as `IgnoredIncome` and strictly excluded to avoid
     double-counting expenses already tracked when created.
 - **Categorization priority hierarchy** (`CategorizationEngine`):
+- **On-Device Gemini Nano ReAct Categorization** (`CategorizationEngine`, `AiCoreManager`):
+  - Supported devices (e.g. Snapdragon 8 Elite / OnePlus 13 on Android 16) run local
+    inference via Google AICore (`com.google.mlkit:genai-prompt`).
+  - **Settings Toggle**: Configurable in Settings (`Smart Categorization (Gemini Nano)`),
+    backed by `AppSettings.aiCoreCategorizationEnabled` in DataStore.
+  - **Two-Turn ReAct Agent Flow**:
+    - **Turn 1 (Query generation)**: Gemini Nano writes a read-only SQLite `SELECT`
+      query against `v_transaction_history` searching by payee or keywords.
+    - **Tool execution** (`TransactionHistoryQueryExecutor`): The app executes the query
+      with strict validation (SELECT only, forbidden tokens rejected, LIMIT capped at 75).
+      If no matches are found, it falls back to the user's 75 most recent transactions.
+    - **Turn 2 (Classification & synthesis)**: Nano receives the retrieved historical
+      records, allowed category hierarchy, and `Time of Day` context, then predicts:
+      - `merchant`: clean recognizable payee/vendor name.
+      - `category` & `subcategory`: exact match from category tree. For `🍜 Food`,
+        the meal subcategory (`Breakfast`: 05:00–11:30, `Lunch`: 11:30–16:00,
+        `snacks`: 16:00–19:00, `Dinner`: 19:00–05:00) is assigned based on the
+        transaction time of day and history.
+      - `note`: concise keyword matching user historical style (e.g. `"Lunch"`,
+        `"Dinner"`), never duplicating vendor name or conjunctions (never
+        `"Swiggy for Dinner"`).
+  - **Background Deferral & Foreground Execution**:
+    - Google AICore blocks background inference (`ErrorCode 30: BACKGROUND_USE_BLOCKED`).
+    - While the app is closed/backgrounded, transactions are saved with:
+      - `categoryId` = `Other` -> `General`
+      - `note` = `null` (strictly empty to prevent raw SMS leakage)
+      - `merchant` = `parsed.rawText` (storing the raw message internally)
+      - `isApproved` = `false`
+    - When the app enters the foreground, `TransactionsViewModel` and
+      `UnapprovedTransactionsViewModel` observe unapproved transactions with
+      `Other`/`General`, execute the Nano ReAct flow, and update the prediction
+      via `TransactionRepository.updateUnapprovedPrediction()` — preserving
+      `isApproved = false` for manual user approval.
+- **Categorization priority hierarchy (Fallback / Non-AI)** (`CategorizationEngine`):
   - **Priority 1: Explicit Category in Group / Note (Highest)**: Direct name match
     (ignoring emoji prefixes). Subcategories are checked strictly: explicit meal
     keywords (`breakfast`, `lunch`, `dinner`, `snacks`) or transport keywords

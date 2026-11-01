@@ -31,8 +31,8 @@ class BackupRepositoryImpl
         private val transactionDao: TransactionDao,
         private val categorizationEngine: com.moneymanager.data.categorization.CategorizationEngine,
     ) : com.moneymanager.domain.repository.BackupRepository {
-        override suspend fun exportToJson(): AppResult<String> =
-            runCatching {
+        override suspend fun exportToJson(): AppResult<String> {
+            return try {
                 val snapshot =
                     SnapshotCodec.toSnapshot(
                         exportedAtEpochMs = System.currentTimeMillis(),
@@ -40,11 +40,11 @@ class BackupRepositoryImpl
                         accounts = accountDao.getAll(),
                         transactions = transactionDao.getAll(),
                     )
-                SnapshotCodec.encode(snapshot)
-            }.fold(
-                onSuccess = { it.asSuccess() },
-                onFailure = { fail(AppError.Unknown(it.message ?: "Export failed")) },
-            )
+                SnapshotCodec.encode(snapshot).asSuccess()
+            } catch (e: Exception) {
+                fail(AppError.Unknown(e.message ?: "Export failed"))
+            }
+        }
 
         override suspend fun importFromJson(json: String): AppResult<Unit> {
             val snapshot =
@@ -60,7 +60,7 @@ class BackupRepositoryImpl
                 )
             }
 
-            return runCatching {
+            return try {
                 db.withTransaction {
                     // Clear child-first to respect foreign keys. The self-referential
                     // categories/accounts FKs use RESTRICT, which is enforced per row —
@@ -80,9 +80,9 @@ class BackupRepositoryImpl
                     SnapshotCodec.transactionEntities(snapshot),
                     SnapshotCodec.categoryEntities(snapshot),
                 )
-            }.fold(
-                onSuccess = { Unit.asSuccess() },
-                onFailure = { fail(AppError.Unknown(it.message ?: "Restore failed")) },
-            )
+                Unit.asSuccess()
+            } catch (e: Exception) {
+                fail(AppError.Unknown(e.message ?: "Restore failed"))
+            }
         }
     }

@@ -1,5 +1,9 @@
 package com.moneymanager.di
 
+import com.moneymanager.data.categorization.AiCoreManager
+import com.moneymanager.data.categorization.AiCoreManagerImpl
+import com.moneymanager.data.categorization.TransactionHistoryQueryExecutor
+import com.moneymanager.data.categorization.TransactionHistoryQueryExecutorImpl
 import com.moneymanager.data.repository.AccountRepositoryImpl
 import com.moneymanager.data.repository.BackupRepositoryImpl
 import com.moneymanager.data.repository.CategoryRepositoryImpl
@@ -39,4 +43,12 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindBackupRepository(impl: BackupRepositoryImpl): BackupRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindAiCoreManager(impl: AiCoreManagerImpl): AiCoreManager
+
+    @Binds
+    @Singleton
+    abstract fun bindTransactionHistoryQueryExecutor(impl: TransactionHistoryQueryExecutorImpl): TransactionHistoryQueryExecutor
 }

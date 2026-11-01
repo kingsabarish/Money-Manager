@@ -63,4 +63,10 @@ interface TransactionDao {
 
     @Query("UPDATE transactions SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
     suspend fun remapCategory(oldCategoryId: Long, newCategoryId: Long)
+
+    @Query("SELECT * FROM transactions WHERE isApproved = 1 ORDER BY date DESC, id DESC LIMIT :limit")
+    suspend fun getRecentApproved(limit: Int): List<TransactionEntity>
+
+    @Query("SELECT * FROM transactions WHERE merchant = :merchant AND isApproved = 1 ORDER BY date DESC, id DESC LIMIT :limit")
+    suspend fun getApprovedByMerchant(merchant: String, limit: Int): List<TransactionEntity>
 }

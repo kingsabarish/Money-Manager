@@ -57,7 +57,8 @@ class FakeCategoryDao(private val db: InMemoryDb) : CategoryDao {
         db.transactions.value.count { it.categoryId == categoryId }
 
     override suspend fun insert(entity: CategoryEntity): Long {
-        val id = db.nextCategoryId()
+        val existingMax = db.categories.value.maxOfOrNull { it.id } ?: 0L
+        val id = maxOf(db.nextCategoryId(), existingMax + 1)
         db.categories.value = db.categories.value + entity.copy(id = id)
         return id
     }
@@ -220,4 +221,16 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
             .groupBy { it.accountId }
             .maxByOrNull { it.value.size }
             ?.key
+
+    override suspend fun getRecentApproved(limit: Int): List<TransactionEntity> =
+        db.transactions.value
+            .filter { it.isApproved }
+            .sortedWith(compareByDescending<TransactionEntity> { it.date }.thenByDescending { it.id })
+            .take(limit)
+
+    override suspend fun getApprovedByMerchant(merchant: String, limit: Int): List<TransactionEntity> =
+        db.transactions.value
+            .filter { it.isApproved && it.merchant == merchant }
+            .sortedWith(compareByDescending<TransactionEntity> { it.date }.thenByDescending { it.id })
+            .take(limit)
 }

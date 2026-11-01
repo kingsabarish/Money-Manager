@@ -61,6 +61,17 @@ interface TransactionRepository {
         merchant: String? = null,
     ): AppResult<Transaction>
 
+    /**
+     * Update predicted categorization, merchant, and note for an unapproved expense while preserving isApproved = false.
+     * Fails with NotFound if [id] does not exist, or Validation if [categoryId] does not exist.
+     */
+    suspend fun updateUnapprovedPrediction(
+        id: Long,
+        categoryId: Long,
+        merchant: String?,
+        note: String?,
+    ): AppResult<Transaction>
+
     suspend fun approve(id: Long): AppResult<Unit>
 
     suspend fun approveAll(): AppResult<Unit>

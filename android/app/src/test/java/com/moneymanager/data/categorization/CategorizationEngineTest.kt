@@ -1,66 +1,53 @@
 package com.moneymanager.data.categorization
 
+import com.moneymanager.data.ingestion.TransactionParser
+import com.moneymanager.data.ingestion.TransactionSource
 import com.moneymanager.data.local.dao.CategoryDao
-import com.moneymanager.data.local.dao.CategoryMlWeightDao
+import com.moneymanager.data.local.dao.TransactionDao
 import com.moneymanager.data.local.entity.CategoryEntity
-import com.moneymanager.data.local.entity.CategoryMlWeightEntity
-import com.moneymanager.data.local.entity.TransactionEntity
 import com.moneymanager.data.repository.FakeCategoryDao
+import com.moneymanager.data.repository.FakeTransactionDao
 import com.moneymanager.data.repository.InMemoryDb
 import com.moneymanager.domain.model.TransactionType
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
-import java.time.LocalDate
-import java.time.LocalTime
 
-class FakeCategoryMlWeightDao : CategoryMlWeightDao {
-    val weights = mutableListOf<CategoryMlWeightEntity>()
-    private var nextId = 1L
+class FakeAiCoreManager(
+    var isSupported: Boolean = false,
+    var responses: MutableList<String> = mutableListOf(),
+) : AiCoreManager {
+    override suspend fun isAiCoreSupported(): Boolean = isSupported
 
-    override suspend fun getWeightsForFeature(featureKey: String): List<CategoryMlWeightEntity> =
-        weights.filter { it.featureKey == featureKey }
+    val prompts = mutableListOf<String>()
 
-    override suspend fun getWeightsForFeatures(featureKeys: List<String>): List<CategoryMlWeightEntity> =
-        weights.filter { it.featureKey in featureKeys }
-
-    override suspend fun getAllWeights(): List<CategoryMlWeightEntity> = weights.toList()
-
-    override suspend fun getCount(): Int = weights.size
-
-    override suspend fun insertAll(weights: List<CategoryMlWeightEntity>) {
-        for (w in weights) {
-            val index = this.weights.indexOfFirst { it.featureKey == w.featureKey && it.categoryId == w.categoryId }
-            if (index >= 0) {
-                this.weights[index] = w.copy(id = this.weights[index].id)
-            } else {
-                this.weights.add(w.copy(id = nextId++))
-            }
-        }
+    override suspend fun generateContent(prompt: String): String {
+        prompts.add(prompt)
+        return if (responses.isNotEmpty()) responses.removeAt(0) else ""
     }
+}
 
-    override suspend fun incrementWeight(featureKey: String, categoryId: Long, timestamp: Long) {
-        val index = weights.indexOfFirst { it.featureKey == featureKey && it.categoryId == categoryId }
-        if (index >= 0) {
-            val existing = weights[index]
-            weights[index] = existing.copy(count = existing.count + 1, lastUpdatedEpochMs = timestamp)
-        } else {
-            weights.add(CategoryMlWeightEntity(id = nextId++, featureKey = featureKey, categoryId = categoryId, count = 1, lastUpdatedEpochMs = timestamp))
-        }
-    }
+class FakeTransactionHistoryQueryExecutor(
+    var result: HistoryQueryResult = HistoryQueryResult(records = emptyList(), wasFallback = true),
+) : TransactionHistoryQueryExecutor {
+    var lastExecutedQuery: String? = null
 
-    override suspend fun deleteAll() {
-        weights.clear()
+    override suspend fun executeQuery(sql: String?, limit: Int): HistoryQueryResult {
+        lastExecutedQuery = sql
+        return result
     }
 }
 
 class CategorizationEngineTest {
     private lateinit var db: InMemoryDb
     private lateinit var categoryDao: CategoryDao
-    private lateinit var mlWeightDao: FakeCategoryMlWeightDao
+    private lateinit var transactionDao: TransactionDao
+    private lateinit var fakeQueryExecutor: FakeTransactionHistoryQueryExecutor
+    private lateinit var fakeAiCoreManager: FakeAiCoreManager
     private lateinit var engine: CategorizationEngine
 
     private val foodId = 1L
@@ -70,174 +57,186 @@ class CategorizationEngineTest {
     private val travelId = 5L
     private val petrolId = 6L
     private val cabAutoId = 7L
-    private val publicTransportId = 8L
-    private val otherId = 9L
+    private val otherId = 8L
 
     @Before
     fun setUp() {
         db = InMemoryDb()
         categoryDao = FakeCategoryDao(db)
-        mlWeightDao = FakeCategoryMlWeightDao()
-        engine = CategorizationEngine(categoryDao, mlWeightDao)
+        transactionDao = FakeTransactionDao(db)
+        fakeQueryExecutor = FakeTransactionHistoryQueryExecutor()
+        fakeAiCoreManager = FakeAiCoreManager()
+        engine = CategorizationEngine(
+            categoryDao = categoryDao,
+            transactionDao = transactionDao,
+            queryExecutor = fakeQueryExecutor,
+            aiCoreManager = fakeAiCoreManager,
+        )
 
-        // Seed Categories with emojis and normalized Travel subcategories
         db.categories.value = listOf(
-            CategoryEntity(id = foodId, name = "🍜 Food", parentId = null, type = TransactionType.EXPENSE),
+            CategoryEntity(id = foodId, name = "Food", parentId = null, type = TransactionType.EXPENSE),
             CategoryEntity(id = breakfastId, name = "Breakfast", parentId = foodId, type = TransactionType.EXPENSE),
             CategoryEntity(id = lunchId, name = "Lunch", parentId = foodId, type = TransactionType.EXPENSE),
             CategoryEntity(id = dinnerId, name = "Dinner", parentId = foodId, type = TransactionType.EXPENSE),
-            CategoryEntity(id = travelId, name = "🚖 Travel", parentId = null, type = TransactionType.EXPENSE),
-            CategoryEntity(id = petrolId, name = "petrol", parentId = travelId, type = TransactionType.EXPENSE),
+            CategoryEntity(id = travelId, name = "Travel", parentId = null, type = TransactionType.EXPENSE),
+            CategoryEntity(id = petrolId, name = "Petrol", parentId = travelId, type = TransactionType.EXPENSE),
             CategoryEntity(id = cabAutoId, name = "Cab / Auto", parentId = travelId, type = TransactionType.EXPENSE),
-            CategoryEntity(id = publicTransportId, name = "Public Transport", parentId = travelId, type = TransactionType.EXPENSE),
-            CategoryEntity(id = otherId, name = "Others", parentId = null, type = TransactionType.EXPENSE),
+            CategoryEntity(id = otherId, name = "Other", parentId = null, type = TransactionType.EXPENSE),
         )
     }
 
     @Test
-    fun `falls back to Other when no matching signals exist`() = runTest {
+    fun `when AICore is unsupported, falls back to Other with General subcategory and empty note`() = runTest {
+        fakeAiCoreManager.isSupported = false
+
         val result = engine.predictCategory(
-            merchant = "UnknownVendorX",
-            note = null,
-            amount = BigDecimal("150"),
+            rawMessage = "Rs 150.00 debited from A/c XX1234 at UnknownStore",
+            source = TransactionSource.SMS,
+            amount = BigDecimal("150.00"),
+            fallbackMerchant = "UnknownStore",
+            fallbackNote = "Random Purchase",
         )
+
         assertEquals(otherId, result.topCategoryId)
-        assertNull(result.subCategoryId)
-        assertEquals(otherId, result.finalCategoryId)
+        assertNotNull(result.subCategoryId)
+        assertEquals(result.subCategoryId, result.finalCategoryId)
+        assertEquals("", result.predictedNote)
+        assertEquals("UnknownStore", result.predictedMerchant)
+        assertEquals(0f, result.confidence, 0.001f)
+
+        // General subcategory was auto-created under Other
+        val createdSub = db.categories.value.firstOrNull { it.id == result.subCategoryId }
+        assertNotNull(createdSub)
+        assertEquals("General", createdSub?.name)
+        assertEquals(otherId, createdSub?.parentId)
     }
 
     @Test
-    fun `Priority 1 - GPay split note with generic item Food - for-eggs lands in top-level Food only`() = runTest {
-        val result = engine.predictCategory(
-            merchant = "Google Pay",
-            note = "Food - for-eggs",
-            amount = BigDecimal("50"),
-            time = LocalTime.of(8, 30),
+    fun `executes Turn 1 to get SQL query, executes tool, and passes result to Turn 2 for classification`() = runTest {
+        fakeAiCoreManager.isSupported = true
+        fakeAiCoreManager.responses = mutableListOf(
+            // Turn 1 Query Response
+            """{"query": "SELECT merchant, amount, category, subcategory, note FROM v_transaction_history WHERE merchant LIKE '%swiggy%' LIMIT 75"}""",
+            // Turn 2 Classification Response
+            """{"merchant": "Swiggy", "category": "Food", "subcategory": "Dinner", "note": "Dinner"}"""
         )
-        // Must land in top-level Food ONLY, NOT in Breakfast!
-        assertEquals(foodId, result.topCategoryId)
-        assertNull(result.subCategoryId)
-        assertEquals(foodId, result.finalCategoryId)
-    }
 
-    @Test
-    fun `Priority 1 - GPay split note with explicit meal Food - dinner lands in Food and Dinner`() = runTest {
-        val result = engine.predictCategory(
-            merchant = "Google Pay",
-            note = "Food - dinner",
-            amount = BigDecimal("200"),
+        fakeQueryExecutor.result = HistoryQueryResult(
+            records = listOf(
+                TransactionHistoryRecord(
+                    date = "2026-10-25",
+                    amount = BigDecimal("350.00"),
+                    merchant = "Swiggy",
+                    note = "Dinner",
+                    category = "Food",
+                    subcategory = "Dinner",
+                )
+            ),
+            wasFallback = false,
         )
+
+        val result = engine.predictCategory(
+            rawMessage = "Rs 450.00 debited from A/c XX4006 at SWIGGY for Dinner",
+            source = TransactionSource.SMS,
+            amount = BigDecimal("450.00"),
+            fallbackMerchant = "SWIGGY for Dinner",
+            fallbackNote = null,
+        )
+
+        assertEquals("SELECT merchant, amount, category, subcategory, note FROM v_transaction_history WHERE merchant LIKE '%swiggy%' LIMIT 75", fakeQueryExecutor.lastExecutedQuery)
         assertEquals(foodId, result.topCategoryId)
         assertEquals(dinnerId, result.subCategoryId)
         assertEquals(dinnerId, result.finalCategoryId)
+        assertEquals("Swiggy", result.predictedMerchant)
+        assertEquals("Dinner", result.predictedNote)
+
+        // Verify prompt 2 contains the tool output matches found
+        assertTrue(fakeAiCoreManager.prompts[1].contains("Retrieved Historical Records (Tool Output - Matches found):"))
+        assertTrue(fakeAiCoreManager.prompts[1].contains(""""Swiggy" (₹350.00) -> Food > Dinner: Dinner"""))
     }
 
     @Test
-    fun `Priority 1 - GPay split note with Food - breakfast lands in Food and Breakfast`() = runTest {
+    fun `auto-creates new subcategory when Gemini Nano suggests an unmapped subcategory`() = runTest {
+        fakeAiCoreManager.isSupported = true
+        fakeAiCoreManager.responses = mutableListOf(
+            """{"query": "SELECT * FROM v_transaction_history WHERE merchant LIKE '%metro%' LIMIT 75"}""",
+            """{"merchant": "Metro", "category": "Travel", "subcategory": "Metro", "note": "Metro train ticket"}"""
+        )
+
         val result = engine.predictCategory(
-            merchant = "Google Pay",
-            note = "Food - breakfast",
-            amount = BigDecimal("80"),
-        )
-        assertEquals(foodId, result.topCategoryId)
-        assertEquals(breakfastId, result.subCategoryId)
-        assertEquals(breakfastId, result.finalCategoryId)
-    }
-
-    @Test
-    fun `Food items like idly, dosa, or biryani land in top-level Food only without subcategory`() = runTest {
-        val result = engine.predictCategory(
-            merchant = "Hotel Saravana",
-            note = "idly and dosa",
-            amount = BigDecimal("90"),
-        )
-        assertEquals(foodId, result.topCategoryId)
-        assertNull(result.subCategoryId)
-        assertEquals(foodId, result.finalCategoryId)
-    }
-
-    @Test
-    fun `Cab, auto, and rapido all combine into Cab Auto subcategory`() = runTest {
-        val rapidoResult = engine.predictCategory(merchant = "Rapido", note = null, amount = BigDecimal("60"))
-        assertEquals(travelId, rapidoResult.topCategoryId)
-        assertEquals(cabAutoId, rapidoResult.subCategoryId)
-
-        val uberResult = engine.predictCategory(merchant = "Uber", note = "cab ride", amount = BigDecimal("300"))
-        assertEquals(travelId, uberResult.topCategoryId)
-        assertEquals(cabAutoId, uberResult.subCategoryId)
-
-        val autoResult = engine.predictCategory(merchant = "Auto driver", note = "auto", amount = BigDecimal("100"))
-        assertEquals(travelId, autoResult.topCategoryId)
-        assertEquals(cabAutoId, autoResult.subCategoryId)
-    }
-
-    @Test
-    fun `Bus, redbus, and train map to Public Transport subcategory`() = runTest {
-        val busResult = engine.predictCategory(merchant = "KSRTC", note = "bus ticket", amount = BigDecimal("150"))
-        assertEquals(travelId, busResult.topCategoryId)
-        assertEquals(publicTransportId, busResult.subCategoryId)
-
-        val trainResult = engine.predictCategory(merchant = "IRCTC", note = "train", amount = BigDecimal("250"))
-        assertEquals(travelId, trainResult.topCategoryId)
-        assertEquals(publicTransportId, trainResult.subCategoryId)
-    }
-
-    @Test
-    fun `Priority 2 - Learned transaction history categorizes friend transfer`() = runTest {
-        val friendMerchant = "A/c 987654321012"
-
-        // Unknown initially
-        val initial = engine.predictCategory(merchant = friendMerchant, note = null, amount = BigDecimal("200"))
-        assertEquals(otherId, initial.topCategoryId)
-
-        // User edits/assigns Food
-        engine.train(
-            merchant = friendMerchant,
-            note = null,
-            amount = BigDecimal("200"),
-            assignedCategoryId = foodId,
+            rawMessage = "Rs 30.00 spent on BMRC METRO",
+            source = TransactionSource.SMS,
+            amount = BigDecimal("30.00"),
+            fallbackMerchant = "BMRC METRO",
+            fallbackNote = "Ticket purchase",
         )
 
-        // Next time: learns Food from history
-        val learned = engine.predictCategory(merchant = friendMerchant, note = null, amount = BigDecimal("250"))
-        assertEquals(foodId, learned.topCategoryId)
+        assertEquals(travelId, result.topCategoryId)
+        assertNotNull(result.subCategoryId)
+        assertEquals(result.subCategoryId, result.finalCategoryId)
+        assertEquals("Metro train ticket", result.predictedNote)
+        assertEquals("Metro", result.predictedMerchant)
+
+        // Ensure "Metro" subcategory was created in DB under Travel
+        val createdSub = db.categories.value.firstOrNull { it.id == result.subCategoryId }
+        assertNotNull(createdSub)
+        assertEquals("Metro", createdSub?.name)
+        assertEquals(travelId, createdSub?.parentId)
     }
 
     @Test
-    fun `Priority 3 - Seeded keyword Swiggy categorizes to Food`() = runTest {
-        val result = engine.predictCategory(
-            merchant = "Swiggy",
-            note = null,
-            amount = BigDecimal("350"),
+    fun `handles query tool fallback and explicitly informs Gemini when no matching query records exist`() = runTest {
+        fakeAiCoreManager.isSupported = true
+        fakeAiCoreManager.responses = mutableListOf(
+            """{"query": "SELECT * FROM v_transaction_history WHERE merchant LIKE '%nonexistent%'"}""",
+            """{"merchant": "NewStore", "category": "Other", "subcategory": "General", "note": "New store purchase"}"""
         )
-        assertEquals(foodId, result.topCategoryId)
-    }
 
-    @Test
-    fun `seedInitialWeights populates weights`() = runTest {
-        assertEquals(0, mlWeightDao.weights.size)
-        engine.seedInitialWeights()
-        assert(mlWeightDao.weights.isNotEmpty())
-    }
-
-    @Test
-    fun `seedFromTransactions accurately populates weights`() = runTest {
-        val historical = listOf(
-            TransactionEntity(
-                id = 1,
-                type = TransactionType.EXPENSE,
-                date = LocalDate.now(),
-                amount = BigDecimal("150"),
-                categoryId = lunchId,
-                accountId = 1,
-                note = "meals",
-                merchant = "Bawarchi",
+        fakeQueryExecutor.result = HistoryQueryResult(
+            records = listOf(
+                TransactionHistoryRecord(
+                    date = "2026-10-30",
+                    amount = BigDecimal("1000.00"),
+                    merchant = "RecentStore",
+                    note = "General items",
+                    category = "Other",
+                    subcategory = "General",
+                )
             ),
+            wasFallback = true,
         )
 
-        engine.seedFromTransactions(historical, db.categories.value)
-        val weights = mlWeightDao.getAllWeights()
-        assert(weights.any { it.featureKey == "merchant:bawarchi" && it.categoryId == lunchId })
-        assert(weights.any { it.featureKey == "merchant:bawarchi" && it.categoryId == foodId })
+        val result = engine.predictCategory(
+            rawMessage = "Rs 500.00 debited at NewStore",
+            source = TransactionSource.SMS,
+            amount = BigDecimal("500.00"),
+            fallbackMerchant = "NewStore",
+        )
+
+        assertEquals(otherId, result.topCategoryId)
+        assertEquals("NewStore", result.predictedMerchant)
+
+        // Verify Turn 2 prompt notified Gemini about fallback records
+        val classifyPrompt = fakeAiCoreManager.prompts[1]
+        assertTrue(classifyPrompt.contains("No matching historical records found for your search query. The following 75 records are the user's most recent general transactions for reference"))
+    }
+
+    @Test
+    fun `gracefully falls back to Other and empty note when Gemini Nano throws an unexpected error`() = runTest {
+        fakeAiCoreManager.isSupported = true
+        fakeAiCoreManager.responses = mutableListOf("INVALID_NON_JSON")
+
+        val result = engine.predictCategory(
+            rawMessage = "Rs 500.00 debited at Shell",
+            source = TransactionSource.SMS,
+            amount = BigDecimal("500.00"),
+            fallbackMerchant = "Shell",
+            fallbackNote = "Fuel purchase",
+        )
+
+        assertEquals(otherId, result.topCategoryId)
+        assertNotNull(result.subCategoryId)
+        assertEquals("", result.predictedNote)
+        assertEquals("Shell", result.predictedMerchant)
     }
 }

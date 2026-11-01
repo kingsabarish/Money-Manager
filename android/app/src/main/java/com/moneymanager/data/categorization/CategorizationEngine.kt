@@ -1,13 +1,12 @@
 package com.moneymanager.data.categorization
 
+import android.util.Log
+import com.moneymanager.data.ingestion.TransactionSource
 import com.moneymanager.data.local.dao.CategoryDao
-import com.moneymanager.data.local.dao.CategoryMlWeightDao
+import com.moneymanager.data.local.dao.TransactionDao
 import com.moneymanager.data.local.entity.CategoryEntity
-import com.moneymanager.data.local.entity.CategoryMlWeightEntity
-import com.moneymanager.data.local.entity.TransactionEntity
-import com.moneymanager.domain.model.Category
+import com.moneymanager.domain.model.TransactionType
 import java.math.BigDecimal
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
@@ -16,622 +15,430 @@ import javax.inject.Singleton
 data class CategorizationResult(
     val topCategoryId: Long,
     val subCategoryId: Long?,
-    val finalCategoryId: Long, // subCategoryId ?: topCategoryId
-    val confidence: Float,
+    val finalCategoryId: Long,
+    val predictedNote: String,
+    val predictedMerchant: String,
+    val confidence: Float = 1.0f,
 )
 
 @Singleton
-class CategorizationEngine
-    @Inject
-    constructor(
-        private val categoryDao: CategoryDao,
-        private val mlWeightDao: CategoryMlWeightDao,
-    ) {
-        /**
-         * Cleans a category name by removing emojis, punctuation, and non-alphanumerics.
-         */
-        fun cleanCategoryName(name: String): String =
-            name.lowercase().replace(Regex("""[^a-z0-9\s/]"""), "").trim()
+class CategorizationEngine @Inject constructor(
+    private val categoryDao: CategoryDao,
+    private val transactionDao: TransactionDao,
+    private val queryExecutor: TransactionHistoryQueryExecutor,
+    private val aiCoreManager: AiCoreManager,
+) {
+    /**
+     * Cleans a category name by removing emojis, punctuation, and non-alphanumerics.
+     */
+    fun cleanCategoryName(name: String): String =
+        name.lowercase().replace(Regex("""[^a-z0-9\s/]"""), "").trim()
 
-        /**
-         * Extracts ML features from transaction inputs.
-         */
-        fun extractFeatures(
-            merchant: String,
-            note: String?,
-            amount: BigDecimal,
-            time: LocalTime? = LocalTime.now(),
-            date: LocalDate = LocalDate.now(),
-        ): List<String> {
-            val features = mutableListOf<String>()
+    /**
+     * Checks if AICore on-device Gemini Nano is available on this device.
+     */
+    suspend fun isAiCoreSupported(): Boolean = aiCoreManager.isAiCoreSupported()
 
-            // 1. Merchant feature
-            val cleanMerchant = cleanFeatureToken(merchant)
-            if (cleanMerchant.isNotBlank()) {
-                features.add("merchant:$cleanMerchant")
-            }
-
-            // 2. Note and group title tokens
-            if (!note.isNullOrBlank()) {
-                val words = note.lowercase().split(Regex("""[^a-z0-9]+"""))
-                for (w in words) {
-                    val clean = w.trim()
-                    if (clean.length in 3..25 && !STOP_WORDS.contains(clean)) {
-                        features.add("token:$clean")
-                    }
-                }
-            }
-
-            // 3. Time-of-day bucket (if known)
-            if (time != null) {
-                val timeBucket =
-                    when (time.hour) {
-                        in 5..11 -> "morning"
-                        in 12..16 -> "afternoon"
-                        in 17..20 -> "evening"
-                        in 21..23, 0 -> "night"
-                        else -> "late_night"
-                    }
-                features.add("time:$timeBucket")
-            }
-
-            // 4. Day of week bucket
-            val dayBucket =
-                if (date.dayOfWeek == DayOfWeek.SATURDAY || date.dayOfWeek == DayOfWeek.SUNDAY) {
-                    "weekend"
-                } else {
-                    "weekday"
-                }
-            features.add("day:$dayBucket")
-
-            // 5. Amount bracket
-            val amountBucket =
-                when {
-                    amount < BigDecimal("200") -> "micro"
-                    amount <= BigDecimal("1000") -> "small"
-                    amount <= BigDecimal("5000") -> "medium"
-                    else -> "large"
-                }
-            features.add("amount:$amountBucket")
-
-            return features
-        }
-
-        /**
-         * Predicts the most suitable category and subcategory following strict priority:
-         * 1. Priority 1 (Highest): Explicit category in group / note (e.g. "Food - ...").
-         *    Locked to this category immediately. Subcategory is checked strictly for explicit
-         *    meal/sub keywords. Generic items stay at the top category.
-         * 2. Priority 2 (Medium): User transaction history & online learned weights (merchant / payee / trained tokens).
-         * 3. Priority 3 (Lowest / Fallback): Seeded keyword dictionary & business suffix heuristics.
-         */
-        suspend fun predictCategory(
-            merchant: String,
-            note: String?,
-            amount: BigDecimal,
-            time: LocalTime? = LocalTime.now(),
-            date: LocalDate = LocalDate.now(),
-        ): CategorizationResult {
-            val allCategories = categoryDao.getAll().map { Category(it.id, it.name, it.parentId, it.type) }
-            val topCategories = allCategories.filter { it.isTopLevel }
-
-            if (topCategories.isEmpty()) {
-                return CategorizationResult(0L, null, 0L, 0f)
-            }
-
-            val fallbackCategory =
-                topCategories.firstOrNull {
-                    val clean = cleanCategoryName(it.name)
-                    clean == "other" || clean == "others"
-                } ?: topCategories.first()
-
-            val noteText = note.orEmpty()
-            val combinedText = "$merchant $noteText".lowercase()
-            val textTokens = combinedText.split(Regex("""[^a-z0-9]+""")).filter { it.isNotBlank() }
-
-            // =========================================================================
-            // PRIORITY 1: Explicit Category in Group or Note (Direct Category Match)
-            // =========================================================================
-            var explicitTopCategory: Category? = null
-            for (top in topCategories) {
-                val cleanTop = cleanCategoryName(top.name)
-                if (cleanTop.length < 3) continue
-                val pattern = Regex("""\b${Regex.escape(cleanTop)}\b""")
-                if (pattern.containsMatchIn(combinedText)) {
-                    explicitTopCategory = top
-                    break
-                }
-            }
-
-            if (explicitTopCategory != null) {
-                val topId = explicitTopCategory.id
-                val subcategories = allCategories.filter { it.parentId == topId }
-                var matchedSubId: Long? = null
-
-                if (subcategories.isNotEmpty()) {
-                    // Check direct subcategory name (e.g. "dinner", "lunch", "petrol")
-                    for (sub in subcategories) {
-                        val cleanSub = cleanCategoryName(sub.name)
-                        val subWords = cleanSub.split(Regex("""\s+""")).filter { it.length >= 3 }
-                        val matchesSubName = subWords.any { word ->
-                            Regex("""\b${Regex.escape(word)}\b""").containsMatchIn(combinedText)
-                        }
-                        if (matchesSubName) {
-                            matchedSubId = sub.id
-                            break
-                        }
-                    }
-
-                    // If subcategory name not directly found, check explicit subcategory keywords
-                    if (matchedSubId == null) {
-                        for (token in textTokens) {
-                            val target = KEYWORDS_MAP[token] ?: continue
-                            if (target.subcategoryName != null) {
-                                val cleanTargetSub = cleanCategoryName(target.subcategoryName)
-                                val matched = subcategories.firstOrNull {
-                                    val currentClean = cleanCategoryName(it.name)
-                                    currentClean == cleanTargetSub ||
-                                        (cleanTargetSub.contains("cab") && (currentClean.contains("cab") || currentClean.contains("auto"))) ||
-                                        (cleanTargetSub.contains("public transport") && (currentClean.contains("transport") || currentClean.contains("bus")))
-                                }
-                                if (matched != null) {
-                                    matchedSubId = matched.id
-                                    break
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // If note has generic item (e.g. "Food - for-eggs"), matchedSubId is null -> stays top-level Food!
-                val finalId = matchedSubId ?: topId
-                return CategorizationResult(
-                    topCategoryId = topId,
-                    subCategoryId = matchedSubId,
-                    finalCategoryId = finalId,
-                    confidence = 100.0f,
-                )
-            }
-
-            // =========================================================================
-            // PRIORITY 2: User Transaction History / Online Learned Model
-            // =========================================================================
-            val features = extractFeatures(merchant, note, amount, time, date)
-            val weights = mlWeightDao.getWeightsForFeatures(features)
-
-            // Check if there are user learned weights for merchant or tokens
-            val historyWeights = weights.filter {
-                it.featureKey.startsWith("merchant:") || it.featureKey.startsWith("token:")
-            }
-
-            if (historyWeights.isNotEmpty()) {
-                val historyScores = mutableMapOf<Long, Float>()
-                for (top in topCategories) {
-                    var score = 0.0f
-                    val subIds = allCategories.filter { it.parentId == top.id }.map { it.id }.toSet()
-                    val targetIds = subIds + top.id
-
-                    for (w in historyWeights) {
-                        if (w.categoryId in targetIds) {
-                            val multiplier = if (w.featureKey.startsWith("merchant:")) 10.0f else 4.0f
-                            score += w.count * multiplier
-                        }
-                    }
-                    if (score > 0f) {
-                        historyScores[top.id] = score
-                    }
-                }
-
-                val bestHistoryEntry = historyScores.maxByOrNull { it.value }
-                if (bestHistoryEntry != null && bestHistoryEntry.value >= 3.0f) {
-                    val chosenTopId = bestHistoryEntry.key
-                    val subcategories = allCategories.filter { it.parentId == chosenTopId }
-                    var chosenSubId: Long? = null
-
-                    if (subcategories.isNotEmpty()) {
-                        val subScores = mutableMapOf<Long, Float>()
-                        for (sub in subcategories) {
-                            var score = 0.0f
-                            for (w in historyWeights) {
-                                if (w.categoryId == sub.id) {
-                                    val multiplier = if (w.featureKey.startsWith("merchant:")) 10.0f else 4.0f
-                                    score += w.count * multiplier
-                                }
-                            }
-                            if (score > 0f) {
-                                subScores[sub.id] = score
-                            }
-                        }
-                        val bestSub = subScores.maxByOrNull { it.value }
-                        if (bestSub != null && bestSub.value >= 3.0f) {
-                            chosenSubId = bestSub.key
-                        }
-                    }
-
-                    val finalId = chosenSubId ?: chosenTopId
-                    return CategorizationResult(
-                        topCategoryId = chosenTopId,
-                        subCategoryId = chosenSubId,
-                        finalCategoryId = finalId,
-                        confidence = 50.0f + bestHistoryEntry.value,
-                    )
-                }
-            }
-
-            // =========================================================================
-            // PRIORITY 3: Seeded Keyword Dictionary & Fallback Heuristics
-            // =========================================================================
-            // 1. Direct subcategory name in text
-            for (cat in allCategories.filter { !it.isTopLevel }) {
-                val cleanSub = cleanCategoryName(cat.name)
-                val words = cleanSub.split(Regex("""\s+""")).filter { it.length >= 3 }
-                if (words.any { Regex("""\b${Regex.escape(it)}\b""").containsMatchIn(combinedText) }) {
-                    val parentId = cat.parentId ?: continue
-                    return CategorizationResult(
-                        topCategoryId = parentId,
-                        subCategoryId = cat.id,
-                        finalCategoryId = cat.id,
-                        confidence = 40.0f,
-                    )
-                }
-            }
-
-            // 2. Keyword Dictionary
-            for (token in textTokens) {
-                val target = KEYWORDS_MAP[token] ?: continue
-                val cleanTop = cleanCategoryName(target.categoryName)
-                val topCat = topCategories.firstOrNull { cleanCategoryName(it.name) == cleanTop }
-                if (topCat != null) {
-                    var subCatId: Long? = null
-                    if (target.subcategoryName != null) {
-                        val cleanSub = cleanCategoryName(target.subcategoryName)
-                        subCatId = allCategories.firstOrNull {
-                            val curClean = cleanCategoryName(it.name)
-                            it.parentId == topCat.id &&
-                                (curClean == cleanSub ||
-                                    (cleanSub.contains("cab") && (curClean.contains("cab") || curClean.contains("auto"))) ||
-                                    (cleanSub.contains("public transport") && (curClean.contains("transport") || curClean.contains("bus"))))
-                        }?.id
-                    }
-                    val finalId = subCatId ?: topCat.id
-                    return CategorizationResult(
-                        topCategoryId = topCat.id,
-                        subCategoryId = subCatId,
-                        finalCategoryId = finalId,
-                        confidence = 30.0f,
-                    )
-                }
-            }
-
-            // 3. Business Suffix Heuristics
-            for (token in textTokens) {
-                val suffixCat = when {
-                    FOOD_SUFFIXES.any { token.endsWith(it) } -> "food"
-                    TRAVEL_SUFFIXES.any { token.endsWith(it) } -> "travel"
-                    HEALTH_SUFFIXES.any { token.endsWith(it) } -> "health"
-                    APPAREL_SUFFIXES.any { token.endsWith(it) } -> "apparel"
-                    HOUSEHOLD_SUFFIXES.any { token.endsWith(it) } -> "household"
-                    else -> null
-                }
-                if (suffixCat != null) {
-                    val topCat = topCategories.firstOrNull { cleanCategoryName(it.name) == suffixCat }
-                    if (topCat != null) {
-                        return CategorizationResult(
-                            topCategoryId = topCat.id,
-                            subCategoryId = null,
-                            finalCategoryId = topCat.id,
-                            confidence = 20.0f,
-                        )
-                    }
-                }
-            }
-
-            // 4. Default Fallback
+    /**
+     * Predicts the category, subcategory, note, and merchant using an on-device ReAct tool-calling agent flow.
+     * Turn 1: Gemini Nano generates a read-only SQLite SELECT query to retrieve relevant historical transactions.
+     * Tool: The app executes the query against `v_transaction_history` with strict read-only/LIMIT safety constraints.
+     * Turn 2: Gemini Nano receives the query output and classifies the transaction into Category/Subcategory/Note/Merchant.
+     *
+     * On unsupported devices or if inference fails, falls back to "Other" -> "General" with an empty note.
+     */
+    suspend fun predictCategory(
+        rawMessage: String,
+        source: TransactionSource,
+        amount: BigDecimal,
+        fallbackMerchant: String,
+        fallbackNote: String? = null,
+        time: LocalTime? = LocalTime.now(),
+        date: LocalDate = LocalDate.now(),
+    ): CategorizationResult {
+        val allCategories = categoryDao.getAll()
+        if (allCategories.isEmpty()) {
+            val otherId = categoryDao.insert(
+                CategoryEntity(name = "Other", parentId = null, type = TransactionType.EXPENSE)
+            )
+            val subId = categoryDao.insert(
+                CategoryEntity(name = "General", parentId = otherId, type = TransactionType.EXPENSE)
+            )
             return CategorizationResult(
-                topCategoryId = fallbackCategory.id,
-                subCategoryId = null,
-                finalCategoryId = fallbackCategory.id,
-                confidence = 1.0f,
+                topCategoryId = otherId,
+                subCategoryId = subId,
+                finalCategoryId = subId,
+                predictedNote = "",
+                predictedMerchant = fallbackMerchant,
+                confidence = 0f,
             )
         }
 
-        /**
-         * Online training: updates ML weights based on approved or user-edited category.
-         */
-        suspend fun train(
-            merchant: String,
-            note: String?,
-            amount: BigDecimal,
-            time: LocalTime? = LocalTime.now(),
-            date: LocalDate = LocalDate.now(),
-            assignedCategoryId: Long,
-        ) {
-            val allCategories = categoryDao.getAll()
-            val assigned = allCategories.firstOrNull { it.id == assignedCategoryId } ?: return
+        val topCategories = allCategories.filter { it.parentId == null }
+        val otherCategory = topCategories.firstOrNull {
+            val clean = cleanCategoryName(it.name)
+            clean == "other" || clean == "others"
+        } ?: topCategories.first()
 
-            val features = extractFeatures(merchant, note, amount, time, date)
-            val now = System.currentTimeMillis()
-
-            for (feat in features) {
-                mlWeightDao.incrementWeight(feat, assigned.id, now)
-                if (assigned.parentId != null) {
-                    mlWeightDao.incrementWeight(feat, assigned.parentId, now)
-                }
-            }
+        // 1. Verify AICore availability
+        val isSupported = aiCoreManager.isAiCoreSupported()
+        if (!isSupported) {
+            Log.i("CategorizationEngine", "AICore not available on this device; defaulting to Other -> General with empty note")
+            return fallbackResult(otherCategory, allCategories, fallbackMerchant)
         }
 
-        /**
-         * Seeds ML weights from pre-packaged historical weights matching existing categories.
-         */
-        suspend fun seedInitialWeights() {
-            if (mlWeightDao.getCount() > 0) return
-            val allCategories = categoryDao.getAll()
-            if (allCategories.isEmpty()) return
+        // 2. ReAct Agent Flow
+        try {
+            // Turn 1: Ask Gemini Nano to write a read-only SQLite SELECT query
+            val queryPrompt = buildQueryGenerationPrompt(rawMessage, source, amount)
+            Log.d("CategorizationEngine", "Sending Turn 1 Query Prompt to Gemini Nano:\n$queryPrompt")
+            val rawQueryResponse = aiCoreManager.generateContent(queryPrompt)
+            Log.i("CategorizationEngine", "Gemini Nano Turn 1 Query Response:\n$rawQueryResponse")
 
-            val cleanToCategory = allCategories.associateBy { cleanCategoryName(it.name) }
-            val now = System.currentTimeMillis()
-            val weightEntities = mutableListOf<CategoryMlWeightEntity>()
+            val parsedQuery = parseQueryResponse(rawQueryResponse)
+            Log.d("CategorizationEngine", "Parsed query from agent: $parsedQuery")
 
-            for (item in InitialMlWeights.WEIGHTS) {
-                val cleanName = cleanCategoryName(item.categoryName)
-                val cat = cleanToCategory[cleanName]
-                    ?: allCategories.firstOrNull {
-                        val c = cleanCategoryName(it.name)
-                        (cleanName.contains("cab") && (c.contains("cab") || c.contains("auto"))) ||
-                            (cleanName.contains("public transport") && (c.contains("transport") || c.contains("bus")))
-                    }
-                if (cat != null) {
-                    weightEntities.add(
-                        CategoryMlWeightEntity(
-                            featureKey = item.featureKey,
-                            categoryId = cat.id,
-                            count = item.count,
-                            lastUpdatedEpochMs = now,
-                        ),
-                    )
-                }
+            // Tool Execution: Query SQLite history (with 75 limit and fallback)
+            val historyResult = queryExecutor.executeQuery(parsedQuery, limit = 75)
+            Log.d("CategorizationEngine", "Tool output: returned ${historyResult.records.size} rows (wasFallback=${historyResult.wasFallback})")
+
+            // Turn 2: Feed tool output to Gemini Nano for final classification
+            val classifyPrompt = buildClassificationPrompt(
+                rawMessage = rawMessage,
+                source = source,
+                amount = amount,
+                allCategories = allCategories,
+                historyResult = historyResult,
+                time = time,
+            )
+            Log.d("CategorizationEngine", "Sending Turn 2 Classification Prompt to Gemini Nano:\n$classifyPrompt")
+            val rawClassifyResponse = aiCoreManager.generateContent(classifyPrompt)
+            Log.i("CategorizationEngine", "Gemini Nano Turn 2 Response:\n$rawClassifyResponse")
+
+            val prediction = parseClassificationResponse(rawClassifyResponse)
+            if (prediction != null) {
+                return resolvePrediction(prediction, allCategories, fallbackMerchant, otherCategory, time)
             }
-            if (weightEntities.isNotEmpty()) {
-                mlWeightDao.insertAll(weightEntities)
-            }
+        } catch (e: Throwable) {
+            Log.e("CategorizationEngine", "Agentic categorization failed, falling back to Other -> General", e)
         }
 
-        /**
-         * Seeds ML weights directly from a list of transactions and categories (e.g. on backup restore).
-         */
-        suspend fun seedFromTransactions(
-            transactions: List<TransactionEntity>,
-            categories: List<CategoryEntity>,
-        ) {
-            if (transactions.isEmpty() || categories.isEmpty()) return
-            val categoryById = categories.associateBy { it.id }
-            val now = System.currentTimeMillis()
-
-            val counts = mutableMapOf<Pair<String, Long>, Int>()
-
-            for (t in transactions) {
-                val cat = categoryById[t.categoryId] ?: continue
-                val features =
-                    extractFeatures(
-                        merchant = t.merchant ?: "",
-                        note = t.note,
-                        amount = t.amount,
-                        time = null,
-                        date = t.date,
-                    )
-                val targets = mutableListOf(cat.id)
-                if (cat.parentId != null) {
-                    targets.add(cat.parentId)
-                }
-
-                for (f in features) {
-                    for (targetId in targets) {
-                        val pair = Pair(f, targetId)
-                        counts[pair] = (counts[pair] ?: 0) + 1
-                    }
-                }
-            }
-
-            val entities =
-                counts.map { (pair, count) ->
-                    CategoryMlWeightEntity(
-                        featureKey = pair.first,
-                        categoryId = pair.second,
-                        count = count,
-                        lastUpdatedEpochMs = now,
-                    )
-                }
-
-            mlWeightDao.insertAll(entities)
-        }
-
-        private fun cleanFeatureToken(str: String): String =
-            str.lowercase().replace(Regex("""[^a-z0-9]+"""), "").trim()
-
-        private data class KeywordTarget(val categoryName: String, val subcategoryName: String? = null)
-
-        private companion object {
-            val STOP_WORDS =
-                setOf(
-                    "and", "the", "for", "with", "from", "paid", "sent", "requested",
-                    "bill", "order", "money", "payment", "upi", "vpa", "ref", "txn",
-                )
-
-            val FOOD_SUFFIXES = listOf("foods", "restaurant", "hotel", "kitchen", "bakes", "chaat", "sweets", "mess", "canteen", "bakery")
-            val TRAVEL_SUFFIXES = listOf("travels", "fuels", "fuel", "fue", "petroleum", "motors")
-            val HEALTH_SUFFIXES = listOf("pharmacy", "pharma", "clinic", "hospital")
-            val APPAREL_SUFFIXES = listOf("textiles", "silks", "fashions", "trends", "menswear")
-            val HOUSEHOLD_SUFFIXES = listOf("mart", "supermarket", "provisions", "stores")
-
-            val KEYWORDS_MAP =
-                mapOf(
-                    // Food - Top Level Only (Generic food items, ingredients, delivery, restaurants)
-                    "swiggy" to KeywordTarget("Food"),
-                    "zomato" to KeywordTarget("Food"),
-                    "egg" to KeywordTarget("Food"),
-                    "eggs" to KeywordTarget("Food"),
-                    "biryani" to KeywordTarget("Food"),
-                    "burger" to KeywordTarget("Food"),
-                    "pizza" to KeywordTarget("Food"),
-                    "shawarma" to KeywordTarget("Food"),
-                    "parotta" to KeywordTarget("Food"),
-                    "maggi" to KeywordTarget("Food"),
-                    "meals" to KeywordTarget("Food"),
-                    "restaurant" to KeywordTarget("Food"),
-                    "hotel" to KeywordTarget("Food"),
-                    "kitchen" to KeywordTarget("Food"),
-                    "mess" to KeywordTarget("Food"),
-                    "canteen" to KeywordTarget("Food"),
-                    "dhaba" to KeywordTarget("Food"),
-                    "cafe" to KeywordTarget("Food"),
-                    "dining" to KeywordTarget("Food"),
-
-                    // Food - Explicit Meal Subcategories
-                    "breakfast" to KeywordTarget("Food", "Breakfast"),
-                    "tiffin" to KeywordTarget("Food", "Breakfast"),
-                    "lunch" to KeywordTarget("Food", "Lunch"),
-                    "dinner" to KeywordTarget("Food", "Dinner"),
-                    "tea" to KeywordTarget("Food", "snacks"),
-                    "coffee" to KeywordTarget("Food", "snacks"),
-                    "snack" to KeywordTarget("Food", "snacks"),
-                    "snacks" to KeywordTarget("Food", "snacks"),
-                    "biscuit" to KeywordTarget("Food", "snacks"),
-                    "samosa" to KeywordTarget("Food", "snacks"),
-                    "juice" to KeywordTarget("Food", "snacks"),
-                    "icecream" to KeywordTarget("Food", "snacks"),
-                    "bakery" to KeywordTarget("Food", "snacks"),
-                    "bakes" to KeywordTarget("Food", "snacks"),
-                    "sweets" to KeywordTarget("Food", "snacks"),
-                    "chaat" to KeywordTarget("Food", "snacks"),
-
-                    // Travel - Top Level Only
-                    "travel" to KeywordTarget("Travel"),
-                    "travels" to KeywordTarget("Travel"),
-                    "toll" to KeywordTarget("Travel"),
-                    "fastag" to KeywordTarget("Travel"),
-                    "parking" to KeywordTarget("Travel"),
-
-                    // Travel - Subcategories (Cab/Auto combined, Public Transport, petrol, trip)
-                    "cab" to KeywordTarget("Travel", "Cab / Auto"),
-                    "auto" to KeywordTarget("Travel", "Cab / Auto"),
-                    "rapido" to KeywordTarget("Travel", "Cab / Auto"),
-                    "uber" to KeywordTarget("Travel", "Cab / Auto"),
-                    "ola" to KeywordTarget("Travel", "Cab / Auto"),
-                    "rickshaw" to KeywordTarget("Travel", "Cab / Auto"),
-
-                    "bus" to KeywordTarget("Travel", "Public Transport"),
-                    "redbus" to KeywordTarget("Travel", "Public Transport"),
-                    "train" to KeywordTarget("Travel", "Public Transport"),
-                    "irctc" to KeywordTarget("Travel", "Public Transport"),
-                    "metro" to KeywordTarget("Travel", "Public Transport"),
-                    "ticket" to KeywordTarget("Travel", "Public Transport"),
-
-                    "petrol" to KeywordTarget("Travel", "petrol"),
-                    "fuel" to KeywordTarget("Travel", "petrol"),
-                    "diesel" to KeywordTarget("Travel", "petrol"),
-                    "hpcl" to KeywordTarget("Travel", "petrol"),
-                    "bpcl" to KeywordTarget("Travel", "petrol"),
-                    "ioc" to KeywordTarget("Travel", "petrol"),
-                    "shell" to KeywordTarget("Travel", "petrol"),
-                    "trip" to KeywordTarget("Travel", "Trip"),
-
-                    // Bills
-                    "bill" to KeywordTarget("Bills"),
-                    "bills" to KeywordTarget("Bills"),
-                    "recharge" to KeywordTarget("Bills", "mobile recharge"),
-                    "airtel" to KeywordTarget("Bills", "mobile recharge"),
-                    "jio" to KeywordTarget("Bills", "mobile recharge"),
-                    "vi" to KeywordTarget("Bills", "mobile recharge"),
-                    "vodafone" to KeywordTarget("Bills", "mobile recharge"),
-                    "bsnl" to KeywordTarget("Bills", "mobile recharge"),
-                    "wifi" to KeywordTarget("Bills", "wifi bill"),
-                    "broadband" to KeywordTarget("Bills", "wifi bill"),
-                    "act" to KeywordTarget("Bills", "wifi bill"),
-                    "fibernet" to KeywordTarget("Bills", "wifi bill"),
-                    "electricity" to KeywordTarget("Bills", "EB bill"),
-                    "power" to KeywordTarget("Bills", "EB bill"),
-                    "tneb" to KeywordTarget("Bills", "EB bill"),
-                    "bescom" to KeywordTarget("Bills", "EB bill"),
-                    "eb" to KeywordTarget("Bills", "EB bill"),
-                    "gas" to KeywordTarget("Bills", "gas"),
-                    "indane" to KeywordTarget("Bills", "gas"),
-                    "emi" to KeywordTarget("Bills", "EMI"),
-                    "loan" to KeywordTarget("Bills", "EMI"),
-                    "insurance" to KeywordTarget("Bills", "Medical Insurance"),
-                    "lic" to KeywordTarget("Bills", "Medical Insurance"),
-                    "policybazaar" to KeywordTarget("Bills", "Medical Insurance"),
-                    "ps5" to KeywordTarget("Bills", "ps5 subscription"),
-                    "playstation" to KeywordTarget("Bills", "ps5 subscription"),
-                    "psn" to KeywordTarget("Bills", "ps5 subscription"),
-                    "creditcard" to KeywordTarget("Bills", "credit card"),
-                    "cred" to KeywordTarget("Bills", "credit card"),
-
-                    // Household
-                    "household" to KeywordTarget("Household"),
-                    "zepto" to KeywordTarget("Household", "groceries"),
-                    "blinkit" to KeywordTarget("Household", "groceries"),
-                    "instamart" to KeywordTarget("Household", "groceries"),
-                    "bigbasket" to KeywordTarget("Household", "groceries"),
-                    "dmart" to KeywordTarget("Household", "groceries"),
-                    "supermarket" to KeywordTarget("Household", "groceries"),
-                    "vegetables" to KeywordTarget("Household", "groceries"),
-                    "veggies" to KeywordTarget("Household", "groceries"),
-                    "fruits" to KeywordTarget("Household", "groceries"),
-                    "groceries" to KeywordTarget("Household", "groceries"),
-                    "provision" to KeywordTarget("Household", "groceries"),
-                    "water" to KeywordTarget("Household", "water cane"),
-                    "aquaguard" to KeywordTarget("Household", "water cane"),
-
-                    // Health
-                    "health" to KeywordTarget("Health"),
-                    "medical" to KeywordTarget("Health"),
-                    "pharmacy" to KeywordTarget("Health", "Medicine"),
-                    "pharma" to KeywordTarget("Health", "Medicine"),
-                    "medicine" to KeywordTarget("Health", "Medicine"),
-                    "meds" to KeywordTarget("Health", "Medicine"),
-                    "apollo" to KeywordTarget("Health", "Medicine"),
-                    "medplus" to KeywordTarget("Health", "Medicine"),
-                    "netmeds" to KeywordTarget("Health", "Medicine"),
-                    "hospital" to KeywordTarget("Health", "Hospital"),
-                    "clinic" to KeywordTarget("Health", "Hospital"),
-                    "doctor" to KeywordTarget("Health", "Hospital"),
-                    "dental" to KeywordTarget("Health", "Hospital"),
-                    "gym" to KeywordTarget("Health", "gym"),
-                    "fitness" to KeywordTarget("Health", "gym"),
-                    "sports" to KeywordTarget("Health", "sports"),
-                    "badminton" to KeywordTarget("Health", "sports"),
-
-                    // Entertainment
-                    "entertainment" to KeywordTarget("Entertainment"),
-                    "netflix" to KeywordTarget("Entertainment", "subscriptions"),
-                    "hotstar" to KeywordTarget("Entertainment", "subscriptions"),
-                    "spotify" to KeywordTarget("Entertainment", "subscriptions"),
-                    "youtube" to KeywordTarget("Entertainment", "subscriptions"),
-                    "bookmyshow" to KeywordTarget("Entertainment", "movie"),
-                    "pvr" to KeywordTarget("Entertainment", "movie"),
-                    "inox" to KeywordTarget("Entertainment", "movie"),
-                    "cinema" to KeywordTarget("Entertainment", "movie"),
-                    "theatre" to KeywordTarget("Entertainment", "movie"),
-                    "movie" to KeywordTarget("Entertainment", "movie"),
-                    "gaming" to KeywordTarget("Entertainment", "games"),
-                    "games" to KeywordTarget("Entertainment", "games"),
-                    "steam" to KeywordTarget("Entertainment", "games"),
-
-                    // Apparel
-                    "apparel" to KeywordTarget("Apparel"),
-                    "shopping" to KeywordTarget("Apparel"),
-                    "myntra" to KeywordTarget("Apparel", "Clothing"),
-                    "ajio" to KeywordTarget("Apparel", "Clothing"),
-                    "zara" to KeywordTarget("Apparel", "Clothing"),
-                    "clothing" to KeywordTarget("Apparel", "Clothing"),
-                    "fashion" to KeywordTarget("Apparel", "Fashion"),
-                    "shoes" to KeywordTarget("Apparel", "Shoes"),
-                    "footwear" to KeywordTarget("Apparel", "Shoes"),
-                    "crocs" to KeywordTarget("Apparel", "Shoes"),
-                    "saloon" to KeywordTarget("Apparel", "saloon"),
-                    "salon" to KeywordTarget("Apparel", "saloon"),
-                    "haircut" to KeywordTarget("Apparel", "saloon"),
-                    "spa" to KeywordTarget("Apparel", "saloon"),
-                )
-        }
+        return fallbackResult(otherCategory, allCategories, fallbackMerchant)
     }
+
+    private fun buildQueryGenerationPrompt(
+        rawMessage: String,
+        source: TransactionSource,
+        amount: BigDecimal,
+    ): String {
+        val sourceDesc = when (source) {
+            TransactionSource.SMS -> "Bank SMS"
+            TransactionSource.GPAY_SPLIT -> "Google Pay"
+        }
+
+        return """
+        You are an on-device personal finance agent for Money Manager.
+        Your task is to analyze an incoming expense message and write a read-only SQLite SELECT query to retrieve relevant historical transactions to help categorize it.
+
+        Sources Guide:
+        1. Bank SMS: Typically contains patterns like "debited at <Merchant> for <Purpose>", "transferred to <UPI_VPA>", or "used at <Store>". Identify potential vendor names or keywords.
+        2. Google Pay: Typically formatted as "<Group/Merchant> - <Description>" (e.g., "Food - for-eggs", "Tea Stall - snacks") or "Paid ₹... to <Merchant>".
+
+        Incoming Transaction:
+        - Source: $sourceDesc
+        - Message: "$rawMessage"
+        - Amount: ₹${amount.toPlainString()}
+
+        Available Read-Only Database View:
+        v_transaction_history (
+            date TEXT,           -- ISO date 'YYYY-MM-DD'
+            amount TEXT,         -- Decimal amount in INR
+            merchant TEXT,       -- Clean merchant/payee name
+            note TEXT,           -- Transaction description
+            category TEXT,       -- Top-level category
+            subcategory TEXT     -- Subcategory name
+        )
+
+        Sample Records:
+        - 2026-10-25 | ₹320.00 | Swiggy | Dinner | 🍜 Food | Dinner
+        - 2026-10-20 | ₹210.00 | Uber | Cab to office | 🚖 Travel | Cab / Auto
+
+        Instructions:
+        Write a single SQLite SELECT query to find past transactions matching the merchant, keywords, or similar expenses.
+        - Must ONLY be a SELECT query.
+        - Use columns: merchant, amount, category, subcategory, note.
+        - In WHERE clause, search by merchant or note keywords (e.g. WHERE merchant LIKE '%swiggy%' OR note LIKE '%dinner%').
+        - Do NOT filter by amount or include currency symbols (amount in the view is a plain decimal string, and past orders for the same merchant typically have different amounts).
+        - Max limit is 75 rows.
+
+        Output strict JSON:
+        {"query": "SELECT merchant, amount, category, subcategory, note FROM v_transaction_history WHERE ... LIMIT 75"}
+        """.trimIndent()
+    }
+
+    private fun parseQueryResponse(rawResponse: String): String? {
+        val trimmed = rawResponse.trim()
+        val match = Regex(""""query"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)
+        if (match != null) {
+            return match.groupValues[1].replace("\\\"", "\"").trim()
+        }
+        if (trimmed.startsWith("SELECT", ignoreCase = true)) {
+            return trimmed
+        }
+        return null
+    }
+
+    private fun buildClassificationPrompt(
+        rawMessage: String,
+        source: TransactionSource,
+        amount: BigDecimal,
+        allCategories: List<CategoryEntity>,
+        historyResult: HistoryQueryResult,
+        time: LocalTime? = null,
+    ): String {
+        val topCategories = allCategories.filter { it.parentId == null }
+        val categoryTree = topCategories.joinToString("\n") { top ->
+            val children = allCategories.filter { it.parentId == top.id }
+            val childNames = if (children.isNotEmpty()) {
+                children.joinToString(", ") { it.name }
+            } else {
+                "General"
+            }
+            "- ${top.name}: $childNames"
+        }
+
+        val historyHeader = if (historyResult.wasFallback) {
+            "Retrieved Historical Records (Tool Output - Note: No matching historical records found for your search query. The following 75 records are the user's most recent general transactions for reference):"
+        } else {
+            "Retrieved Historical Records (Tool Output - Matches found):"
+        }
+
+        val formattedRecords = if (historyResult.records.isNotEmpty()) {
+            historyResult.records.take(75).joinToString("\n") { r ->
+                val catDisplay = if (r.subcategory.isNotBlank() && !r.subcategory.equals("General", ignoreCase = true)) {
+                    "${r.category} > ${r.subcategory}"
+                } else {
+                    r.category
+                }
+                val noteDisplay = if (r.note.isNotBlank()) ": ${r.note}" else ""
+                "- \"${r.merchant.ifBlank { "Unknown" }}\" (₹${r.amount.toPlainString()}) -> $catDisplay$noteDisplay"
+            }
+        } else {
+            "- No prior records available."
+        }
+
+        val sourceDesc = when (source) {
+            TransactionSource.SMS -> "Bank SMS"
+            TransactionSource.GPAY_SPLIT -> "Google Pay"
+        }
+
+        val timeDesc = time?.let {
+            val period = when {
+                !it.isBefore(LocalTime.of(5, 0)) && it.isBefore(LocalTime.of(11, 30)) -> "Morning / Breakfast time (05:00 - 11:30)"
+                !it.isBefore(LocalTime.of(11, 30)) && it.isBefore(LocalTime.of(16, 0)) -> "Midday / Lunch time (11:30 - 16:00)"
+                !it.isBefore(LocalTime.of(16, 0)) && it.isBefore(LocalTime.of(19, 0)) -> "Late Afternoon / Snacks time (16:00 - 19:00)"
+                else -> "Night / Dinner time (19:00 - 05:00)"
+            }
+            val formatted = it.format(java.time.format.DateTimeFormatter.ofPattern("hh:mm a"))
+            "$formatted ($period)"
+        } ?: "Unknown"
+
+        return """
+        You are an on-device personal finance assistant for Money Manager.
+        Classify this expense transaction into the best Category and Subcategory, extract the clean Merchant name, and write a concise, clean Note.
+
+        Transaction to Classify:
+        - Source: $sourceDesc
+        - Message: "$rawMessage"
+        - Amount: ₹${amount.toPlainString()}
+        - Time of Day: $timeDesc
+
+        Allowed Categories and Subcategories:
+        $categoryTree
+
+        $historyHeader
+        $formattedRecords
+
+        Requirements:
+        1. "merchant": The clean, recognizable payee/merchant name (e.g. "Swiggy", "Uber", "Amazon").
+        2. "category": Must be one of the top-level categories listed above.
+        3. "subcategory": Must be a relevant subcategory for that category.
+           - For "🍜 Food", select the meal subcategory (Breakfast, Lunch, snacks, Dinner) based on the Time of Day above and the user's past historical patterns. For example, if transaction was in the morning, use "Breakfast"; if midday, use "Lunch"; if late afternoon, use "snacks"; if evening/night, use "Dinner".
+        4. "note": Follow the user's historical naming style closely! For example, if past notes for this merchant or meal type are simple keywords (e.g. "Dinner", "Lunch", "Breakfast", "Snacks"), use just that keyword ("Dinner") and do NOT include the merchant name or conjunctions (never write "Swiggy for Dinner" or "Swiggy Dinner"). Do NOT include card numbers, bank reference IDs, or OTPs.
+
+        Output strict JSON ONLY:
+        {"merchant": "<Merchant>", "category": "<Category>", "subcategory": "<Subcategory>", "note": "<Note>"}
+        """.trimIndent()
+    }
+
+    private data class PredictionJson(
+        val merchant: String,
+        val category: String,
+        val subcategory: String,
+        val note: String,
+    )
+
+    private fun parseClassificationResponse(rawResponse: String): PredictionJson? {
+        val trimmed = rawResponse.trim()
+        val merchant = Regex(""""merchant"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
+        val cat = Regex(""""category"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
+        val sub = Regex(""""subcategory"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
+        val note = Regex(""""note"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
+
+        if (cat.isNullOrBlank()) return null
+        return PredictionJson(
+            merchant = merchant.orEmpty(),
+            category = cat,
+            subcategory = sub.orEmpty(),
+            note = note.orEmpty(),
+        )
+    }
+
+    private suspend fun resolvePrediction(
+        prediction: PredictionJson,
+        allCategories: List<CategoryEntity>,
+        fallbackMerchant: String,
+        otherCategory: CategoryEntity,
+        time: LocalTime? = null,
+    ): CategorizationResult {
+        val topCategories = allCategories.filter { it.parentId == null }
+        val cleanPredCat = cleanCategoryName(prediction.category)
+
+        val matchedTop = topCategories.firstOrNull {
+            cleanCategoryName(it.name) == cleanPredCat
+        } ?: topCategories.firstOrNull {
+            val clean = cleanCategoryName(it.name)
+            clean.contains(cleanPredCat) || cleanPredCat.contains(clean)
+        } ?: otherCategory
+
+        val isFoodCategory = cleanCategoryName(matchedTop.name) == "food"
+        val timeBasedMeal = time?.let {
+            when {
+                !it.isBefore(LocalTime.of(5, 0)) && it.isBefore(LocalTime.of(11, 30)) -> "Breakfast"
+                !it.isBefore(LocalTime.of(11, 30)) && it.isBefore(LocalTime.of(16, 0)) -> "Lunch"
+                !it.isBefore(LocalTime.of(16, 0)) && it.isBefore(LocalTime.of(19, 0)) -> "snacks"
+                else -> "Dinner"
+            }
+        } ?: "Dinner"
+
+        // Match or create subcategory under matchedTop
+        val children = allCategories.filter { it.parentId == matchedTop.id }
+        val candidateSub = if (isFoodCategory && (prediction.subcategory.isBlank() || prediction.subcategory.equals("General", ignoreCase = true))) {
+            timeBasedMeal
+        } else {
+            prediction.subcategory
+        }
+        val cleanPredSub = cleanCategoryName(candidateSub)
+
+        val matchedChild = children.firstOrNull {
+            cleanCategoryName(it.name) == cleanPredSub
+        } ?: children.firstOrNull {
+            val clean = cleanCategoryName(it.name)
+            clean.contains(cleanPredSub) || cleanPredSub.contains(clean)
+        }
+
+        val finalSubId: Long = when {
+            matchedChild != null -> matchedChild.id
+            candidateSub.isNotBlank() && !candidateSub.equals("General", ignoreCase = true) -> {
+                categoryDao.insert(
+                    CategoryEntity(
+                        name = candidateSub.trim().replaceFirstChar { it.uppercase() },
+                        parentId = matchedTop.id,
+                        type = TransactionType.EXPENSE,
+                    )
+                )
+            }
+            else -> {
+                val existingGeneral = children.firstOrNull { it.name.equals("General", ignoreCase = true) }
+                existingGeneral?.id ?: categoryDao.insert(
+                    CategoryEntity(
+                        name = "General",
+                        parentId = matchedTop.id,
+                        type = TransactionType.EXPENSE,
+                    )
+                )
+            }
+        }
+
+        val cleanMerchant = prediction.merchant.ifBlank { fallbackMerchant }
+        val rawNote = prediction.note.trim()
+        val strippedNote = when {
+            cleanMerchant.isNotBlank() && rawNote.startsWith("$cleanMerchant for ", ignoreCase = true) ->
+                rawNote.substring("$cleanMerchant for ".length).trim()
+            cleanMerchant.isNotBlank() && rawNote.startsWith("$cleanMerchant - ", ignoreCase = true) ->
+                rawNote.substring("$cleanMerchant - ".length).trim()
+            cleanMerchant.isNotBlank() && rawNote.startsWith("$cleanMerchant: ", ignoreCase = true) ->
+                rawNote.substring("$cleanMerchant: ".length).trim()
+            cleanMerchant.isNotBlank() && rawNote.equals(cleanMerchant, ignoreCase = true) ->
+                ""
+            else -> rawNote
+        }
+        val cleanNote = strippedNote.ifBlank {
+            if (candidateSub.isNotBlank() && !candidateSub.equals("General", ignoreCase = true)) {
+                candidateSub.trim()
+            } else if (isFoodCategory) {
+                timeBasedMeal
+            } else {
+                cleanMerchant
+            }
+        }
+
+        return CategorizationResult(
+            topCategoryId = matchedTop.id,
+            subCategoryId = finalSubId,
+            finalCategoryId = finalSubId,
+            predictedNote = cleanNote,
+            predictedMerchant = cleanMerchant,
+            confidence = 1.0f,
+        )
+    }
+
+    private suspend fun fallbackResult(
+        otherCategory: CategoryEntity,
+        allCategories: List<CategoryEntity>,
+        fallbackMerchant: String,
+    ): CategorizationResult {
+        val children = allCategories.filter { it.parentId == otherCategory.id }
+        val generalSub = children.firstOrNull { it.name.equals("General", ignoreCase = true) }
+        val subCatId = generalSub?.id ?: categoryDao.insert(
+            CategoryEntity(
+                name = "General",
+                parentId = otherCategory.id,
+                type = TransactionType.EXPENSE,
+            )
+        )
+        return CategorizationResult(
+            topCategoryId = otherCategory.id,
+            subCategoryId = subCatId,
+            finalCategoryId = subCatId,
+            predictedNote = "",
+            predictedMerchant = fallbackMerchant,
+            confidence = 0f,
+        )
+    }
+
+    /**
+     * In Gemini Nano on-device architecture, all saved and edited transactions
+     * in Room serve directly as training examples for subsequent inferences.
+     */
+    suspend fun train(
+        merchant: String,
+        note: String?,
+        amount: BigDecimal,
+        date: LocalDate = LocalDate.now(),
+        assignedCategoryId: Long,
+    ) {
+        Log.d("CategorizationEngine", "Payee '$merchant' learned under category $assignedCategoryId for future prompts.")
+    }
+
+    suspend fun seedInitialWeights() {
+        // No-op in Gemini Nano on-device architecture
+    }
+
+    suspend fun seedFromTransactions(
+        transactions: List<com.moneymanager.data.local.entity.TransactionEntity>,
+        categories: List<CategoryEntity> = emptyList(),
+    ) {
+        // No-op in Gemini Nano on-device architecture
+    }
+}

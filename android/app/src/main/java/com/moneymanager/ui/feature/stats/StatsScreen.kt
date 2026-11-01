@@ -73,7 +73,10 @@ private fun paletteColor(index: Int): Color = ChartPalette[index % ChartPalette.
  * a drill-down listing of that category's transactions for the same period.
  */
 @Composable
-fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
+fun StatsScreen(
+    onEditExpense: (Long) -> Unit = {},
+    viewModel: StatsViewModel = hiltViewModel(),
+) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val detail by viewModel.detail.collectAsStateWithLifecycle()
 
@@ -90,6 +93,7 @@ fun StatsScreen(viewModel: StatsViewModel = hiltViewModel()) {
         CategoryDetailContent(
             detail = currentDetail,
             onBack = onBack,
+            onEditExpense = onEditExpense,
             onSelectSubCategory = viewModel::selectSubCategory,
             onClearSubCategory = viewModel::clearSubCategory,
             onPreviousMonth = viewModel::previousMonth,
@@ -319,6 +323,7 @@ private fun LegendRow(slice: CategorySlice, color: Color, onClick: () -> Unit) {
 private fun CategoryDetailContent(
     detail: CategoryDetailUiState,
     onBack: () -> Unit,
+    onEditExpense: (Long) -> Unit,
     onSelectSubCategory: (Long) -> Unit,
     onClearSubCategory: () -> Unit,
     onPreviousMonth: () -> Unit,
@@ -424,7 +429,7 @@ private fun CategoryDetailContent(
                         }
                     }
                     items(detail.transactions, key = { it.id }) { row ->
-                        DetailTransactionItem(row)
+                        DetailTransactionItem(row = row, onClick = { onEditExpense(row.id) })
                         HorizontalDivider()
                     }
                 }
@@ -514,9 +519,16 @@ private fun BreakdownRow(
 }
 
 @Composable
-private fun DetailTransactionItem(row: DetailTransactionRow) {
+private fun DetailTransactionItem(
+    row: DetailTransactionRow,
+    onClick: () -> Unit,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -607,6 +619,7 @@ private fun CategoryDetailPreview() {
                         selectedSubCategoryIds = emptySet(),
                     ),
                 onBack = {},
+                onEditExpense = {},
                 onSelectSubCategory = {},
                 onClearSubCategory = {},
                 onPreviousMonth = {},

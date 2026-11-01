@@ -124,7 +124,9 @@ fun MoneyManagerNavHost(
                 )
             }
             composable<Stats> {
-                StatsScreen()
+                StatsScreen(
+                    onEditExpense = { id -> navController.navigate(Entry(id)) },
+                )
             }
             composable<Settings> {
                 SettingsScreen(onNavigateToManage = { navController.navigate(Manage) })

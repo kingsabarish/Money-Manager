@@ -21,6 +21,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedButton
@@ -43,7 +45,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.moneymanager.R
+import com.moneymanager.ui.components.CalculatorBottomSheet
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.moneymanager.ui.components.CategoryPickerField
@@ -98,6 +103,18 @@ private fun EntryScreenContent(
     onNoteSuggestionSelected: (String) -> Unit,
 ) {
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showCalculator by remember { mutableStateOf(false) }
+
+    if (showCalculator) {
+        CalculatorBottomSheet(
+            initialValue = state.amountText,
+            onDismiss = { showCalculator = false },
+            onConfirm = { result ->
+                onAmountChange(result)
+                showCalculator = false
+            },
+        )
+    }
     val amountFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val noteAreaBringIntoViewRequester = remember { BringIntoViewRequester() }
@@ -151,6 +168,20 @@ private fun EntryScreenContent(
                 label = { Text("Amount") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                trailingIcon = {
+                    IconButton(
+                        onClick = {
+                            keyboardController?.hide()
+                            showCalculator = true
+                        },
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_calculator),
+                            contentDescription = "Calculator",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                },
                 modifier = Modifier.fillMaxWidth().focusRequester(amountFocusRequester),
             )
 

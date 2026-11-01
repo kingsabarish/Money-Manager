@@ -28,6 +28,8 @@ coroutines = "1.10.2"
 glance = "1.1.1"
 workManager = "2.10.1"
 playServicesAuth = "21.3.0"
+aicore = "0.0.1-exp02"
+mlkitGenaiPrompt = "1.0.0-beta4"
 # Seed-color → full Material 3 scheme generation (Google's material-color-utilities
 # port). 5.0.0 targets Kotlin 2.4 / Compose 1.11+, compatible with our pins.
 materialKolor = "5.0.0"
@@ -89,6 +91,8 @@ androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx"
 # Google Drive backup: Google Identity Services authorization (Drive appdata
 # scope + access token); Drive itself is called over its REST v3 API with OkHttp.
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+google-aicore = { group = "com.google.ai.edge.aicore", name = "aicore", version.ref = "aicore" }
+mlkit-genai-prompt = { group = "com.google.mlkit", name = "genai-prompt", version.ref = "mlkitGenaiPrompt" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

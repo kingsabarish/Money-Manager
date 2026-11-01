@@ -42,11 +42,13 @@ object TransactionParser {
     // Credit patterns (strictly ignored so incoming money is never logged as an expense)
     private val CREDIT_PATTERN = Pattern.compile(
         """(?i)\b(credited|credited\s+with|credited\s+to|deposited|refund\s+of|cashback\s+of|received\s+from|sent\s+you)\b"""
+        """(?i)\b(credited|credited\s+with|credited\s+to|deposited|refund\s+of|cashback\s+of|received\s+from|received\s+(?:a\s+)?payment|payment\s+received|money\s+received|paid\s+(?:to\s+)?you|sent\s+(?:to\s+)?you|transferred\s+to\s+you|received\s+(?:rs\.?|inr|₹))\b"""
     )
 
     // Debit patterns
     private val DEBIT_INDICATOR = Pattern.compile(
         """(?i)\b(debited|debited\s+by|debited\s+with|spent|paid|transferred\s+to|purchase\s+of|charged\s+to|done\s+on|was\s+made|has\s+been\s+made|made\s+using|transaction\s+of|used\s+at|used\s+on|authorized\s+for)\b"""
+        """(?i)\b(debited|debited\s+by|debited\s+with|spent|paid(?!\s+(?:to\s+)?you)|transferred\s+to|purchase\s+of|charged\s+to|done\s+on|was\s+made|has\s+been\s+made|made\s+using|transaction\s+of|used\s+at|used\s+on|authorized\s+for)\b"""
     )
 
     // Amount extraction: matches currency symbols and standard Indian/Western number formats (e.g. Rs 1,499.00, INR 500, ₹ 250.50)
@@ -186,6 +188,11 @@ object TransactionParser {
         if (CREDIT_PATTERN.matcher(combined).find() &&
             !combined.contains("split", ignoreCase = true) &&
             !cleanText.startsWith("Pay ", ignoreCase = true)
+        // Reject incoming money, received payments, or split settlements as income
+        if (CREDIT_PATTERN.matcher(combined).find() ||
+            cleanTitle.contains("received a payment", ignoreCase = true) ||
+            cleanTitle.contains("payment received", ignoreCase = true) ||
+            cleanText.contains("paid you", ignoreCase = true)
         ) {
             return ParsedTransaction.IgnoredIncome
         }

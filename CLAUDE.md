@@ -63,6 +63,30 @@ Persistence:
 - Room `exportSchema = true` writes schema JSON to `app/schemas/` (committed) so
   migrations are possible later.
 
+## Transaction ingestion & UI features
+
+- **Ingestion**:
+  - `SmsTransactionReceiver` intercepts bank debit SMS messages.
+  - `TransactionNotificationListenerService` intercepts Google Pay push notifications
+    (including split requests like `Food - for-eggs`).
+  - `TransactionParser` parses debit amount, account ref, and payee merchant/notes.
+    Account numbers and raw reference strings are filtered out from the human note
+    via `isReasonableNote()`.
+  - **Incoming money & split settlements ignored**: Incoming transactions (e.g.
+    GPay split settlements like `"You've received a payment"`,
+    `"<Name> has paid you ₹..."`, `"Payment received"`, bank credits, refunds,
+    cashback) are classified as `IgnoredIncome` and strictly excluded to avoid
+    double-counting expenses already tracked when created.
+- **UI features & interaction patterns**:
+  - **In-app expense calculator**: Amount input field in `EntryScreen` includes a
+    calculator icon button launching `CalculatorBottomSheet` (backed by
+    `CalculatorEngine` in `ui/components/`). Pre-fills current amount, supports
+    standard operations (`+`, `−`, `×`, `÷`, `(`, `)`), live running result preview,
+    and populates the formatted decimal result directly on "Done".
+  - **Category statistics drill-down navigation**: In `StatsScreen`, tapping any
+    transaction row under a selected category navigates directly to `Entry(transactionId)`
+    for inline editing, returning cleanly with reactive stats recalculation.
+
 Stack & tooling:
 
 - Stack: Room (local DB = source of truth), DataStore (settings), Hilt (DI),

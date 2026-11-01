@@ -162,16 +162,22 @@ class TransactionNotificationListenerService : NotificationListenerService() {
                     text = item.text,
                     timestampEpochMs = item.timestampEpochMs,
                 )
-                if (gpayResult is ParsedTransaction.Expense) gpayResult
-                else TransactionParser.parseSms(item.text, item.timestampEpochMs)
+                when (gpayResult) {
+                    is ParsedTransaction.Expense -> gpayResult
+                    is ParsedTransaction.IgnoredIncome, is ParsedTransaction.IgnoredNoise -> gpayResult
+                    is ParsedTransaction.Unrecognized -> TransactionParser.parseSms(item.text, item.timestampEpochMs)
+                }
             } else {
                 val smsResult = TransactionParser.parseSms(item.text, item.timestampEpochMs)
-                if (smsResult is ParsedTransaction.Expense) smsResult
-                else TransactionParser.parseGPayNotification(
-                    title = item.title,
-                    text = item.text,
-                    timestampEpochMs = item.timestampEpochMs,
-                )
+                when (smsResult) {
+                    is ParsedTransaction.Expense -> smsResult
+                    is ParsedTransaction.IgnoredIncome, is ParsedTransaction.IgnoredNoise -> smsResult
+                    is ParsedTransaction.Unrecognized -> TransactionParser.parseGPayNotification(
+                        title = item.title,
+                        text = item.text,
+                        timestampEpochMs = item.timestampEpochMs,
+                    )
+                }
             }
 
             android.util.Log.i("MoneyManager", "Msg [$idx]: parsed result = $parsed for text: ${item.text}")

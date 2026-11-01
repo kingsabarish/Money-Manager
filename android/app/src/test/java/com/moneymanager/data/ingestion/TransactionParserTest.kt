@@ -242,5 +242,42 @@ class TransactionParserTest {
         assertEquals("4006", expense.accountRef)
         assertEquals(null, expense.note)
     }
+
+    @Test
+    fun `strictly rejects GPay split settlement as IgnoredIncome`() {
+        val result = TransactionParser.parseGPayNotification(
+            title = "You've received a payment",
+            text = "VIMALKUMAR SELVAKUMAR has paid you ₹146.67 for lunch",
+            timestampEpochMs = timestamp,
+            zoneId = zone,
+        )
+        assertEquals(ParsedTransaction.IgnoredIncome, result)
+    }
+
+    @Test
+    fun `strictly rejects paid you in SMS as IgnoredIncome`() {
+        val text = "VIMALKUMAR SELVAKUMAR has paid you ₹146.67 for lunch"
+        val result = TransactionParser.parseSms(text, timestamp, zone)
+        assertEquals(ParsedTransaction.IgnoredIncome, result)
+    }
+
+    @Test
+    fun `strictly rejects various incoming payment notifications as IgnoredIncome`() {
+        val r1 = TransactionParser.parseGPayNotification(
+            title = "You've received a payment",
+            text = "Amit paid you ₹500",
+            timestampEpochMs = timestamp,
+            zoneId = zone,
+        )
+        assertEquals(ParsedTransaction.IgnoredIncome, r1)
+
+        val r2 = TransactionParser.parseGPayNotification(
+            title = "Payment received",
+            text = "₹100 received from Sneha",
+            timestampEpochMs = timestamp,
+            zoneId = zone,
+        )
+        assertEquals(ParsedTransaction.IgnoredIncome, r2)
+    }
 }
 

@@ -227,7 +227,7 @@ private fun SettingsScreenContent(
 
             HorizontalDivider()
 
-            AutoCaptureSection()
+            AutoCaptureSection(state = state)
 
             HorizontalDivider()
 
@@ -356,7 +356,7 @@ private fun ManageSection(onManage: () -> Unit) {
 }
 
 @Composable
-private fun AutoCaptureSection() {
+private fun AutoCaptureSection(state: SettingsUiState) {
     val context = LocalContext.current
     var hasSmsPermission by remember {
         mutableStateOf(
@@ -493,6 +493,55 @@ private fun AutoCaptureSection() {
                         },
                     ) {
                         Text("Enable")
+                    }
+                }
+            }
+        }
+        // AI Smart Categorization Status
+        if (!state.isAiCoreChecking) {
+            if (state.isAiCoreSupported) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("AI Smart Categorization", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Active (Gemini Nano on-device)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "AI Smart Categorization",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Text(
+                                text = "Smart AI categorization is not supported on this device. Captured expenses will be categorized as Other -> General with empty notes.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                        }
                     }
                 }
             }

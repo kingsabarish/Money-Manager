@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.moneymanager.data.categorization.CategorizationEngine
 import com.moneymanager.domain.model.Account
+import com.moneymanager.domain.model.AppResult
 import com.moneymanager.domain.model.Category
 import com.moneymanager.domain.model.Transaction
 import com.moneymanager.domain.repository.AccountRepository
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.util.Collections
 import javax.inject.Inject
 
 data class UnapprovedItem(
@@ -42,10 +44,61 @@ class UnapprovedTransactionsViewModel
     constructor(
         private val transactionRepository: TransactionRepository,
         private val categorizationEngine: CategorizationEngine,
-        categoryRepository: CategoryRepository,
+        private val categoryRepository: CategoryRepository,
         accountRepository: AccountRepository,
         private val notificationManager: com.moneymanager.data.ingestion.TransactionNotificationManager,
     ) : ViewModel() {
+
+        private val processedTxIds = Collections.synchronizedSet(mutableSetOf<Long>())
+
+        init {
+            // Foreground Smart Categorization:
+            // If any transaction was captured while backgrounded (where Google AICore blocks inference),
+            // auto-categorize it using on-device Gemini Nano now that the app is active in the foreground.
+            viewModelScope.launch {
+                if (!categorizationEngine.isAiCoreSupported()) return@launch
+                transactionRepository.observeUnapproved().collect { unapprovedList ->
+                    for (txn in unapprovedList) {
+                        if (processedTxIds.contains(txn.id)) continue
+                        val rawMessage = txn.merchant?.takeIf { it.isNotBlank() } ?: txn.note?.takeIf { it.isNotBlank() } ?: continue
+
+                        val catRes = categoryRepository.getById(txn.categoryId)
+                        val catName = if (catRes is AppResult.Success) catRes.data.name else ""
+                        val isOtherOrGeneral = catName.equals("Other", ignoreCase = true) || catName.equals("General", ignoreCase = true)
+
+                        if (isOtherOrGeneral) {
+                            processedTxIds.add(txn.id)
+                            launch {
+                                try {
+                                    val parsed = com.moneymanager.data.ingestion.TransactionParser.parseSms(rawMessage) as? com.moneymanager.data.ingestion.ParsedTransaction.Expense
+                                    val fallbackMerchant = parsed?.merchant ?: txn.merchant ?: ""
+                                    val fallbackNote = parsed?.note ?: txn.note
+                                    val catResult = categorizationEngine.predictCategory(
+                                        rawMessage = rawMessage,
+                                        source = com.moneymanager.data.ingestion.TransactionSource.SMS,
+                                        amount = txn.amount,
+                                        fallbackMerchant = fallbackMerchant,
+                                        fallbackNote = fallbackNote,
+                                        date = txn.date,
+                                    )
+                                    if (catResult.finalCategoryId != txn.categoryId || catResult.predictedMerchant != txn.merchant) {
+                                        transactionRepository.updateUnapprovedPrediction(
+                                            id = txn.id,
+                                            categoryId = catResult.finalCategoryId,
+                                            merchant = catResult.predictedMerchant,
+                                            note = catResult.predictedNote.takeIf { it.isNotBlank() },
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.w("UnapprovedVM", "Foreground categorization failed for ${txn.id}", e)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         val uiState: StateFlow<UnapprovedUiState> =
             combine(
                 transactionRepository.observeUnapproved(),

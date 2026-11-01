@@ -2,6 +2,9 @@ package com.moneymanager.ui.feature.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.moneymanager.data.categorization.CategorizationEngine
+import com.moneymanager.domain.model.AppResult
+import com.moneymanager.domain.model.Transaction
 import com.moneymanager.domain.repository.AccountRepository
 import com.moneymanager.domain.repository.CategoryRepository
 import com.moneymanager.domain.repository.TransactionRepository
@@ -11,22 +14,22 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
+import java.util.Collections
 import javax.inject.Inject
 
-/** A single expense row, with category/account names already resolved. */
 data class TransactionRow(
     val id: Long,
     val amount: BigDecimal,
     val categoryName: String,
     val accountName: String,
     val note: String?,
+    val merchant: String? = null,
 )
 
-/** Expenses for one calendar day, plus that day's total. */
 data class DaySection(
     val date: LocalDate,
     val dayTotal: BigDecimal,
@@ -47,11 +50,63 @@ data class HomeUiState(
 class TransactionsViewModel
     @Inject
     constructor(
-        transactionRepository: TransactionRepository,
-        categoryRepository: CategoryRepository,
+        private val transactionRepository: TransactionRepository,
+        private val categoryRepository: CategoryRepository,
         accountRepository: AccountRepository,
+        private val categorizationEngine: CategorizationEngine,
     ) : ViewModel() {
         private val selectedMonth = MutableStateFlow(YearMonth.now())
+        private val processedTxIds = Collections.synchronizedSet(mutableSetOf<Long>())
+
+        init {
+            // Foreground Smart Categorization:
+            // When user opens the home screen, check if any unapproved transactions need AI categorization
+            // that was deferred while the app was backgrounded.
+            viewModelScope.launch {
+                if (!categorizationEngine.isAiCoreSupported()) return@launch
+                transactionRepository.observeUnapproved().collect { unapprovedList ->
+                    for (txn in unapprovedList) {
+                        if (processedTxIds.contains(txn.id)) continue
+                        val merchantOrNote = txn.note ?: txn.merchant ?: continue
+                        if (merchantOrNote.isBlank()) continue
+                        val rawMessage = txn.merchant?.takeIf { it.isNotBlank() } ?: txn.note?.takeIf { it.isNotBlank() } ?: continue
+
+                        val catRes = categoryRepository.getById(txn.categoryId)
+                        val catName = if (catRes is AppResult.Success) catRes.data.name else ""
+                        val isOtherOrGeneral = catName.equals("Other", ignoreCase = true) || catName.equals("General", ignoreCase = true)
+
+                        if (isOtherOrGeneral) {
+                            processedTxIds.add(txn.id)
+                            launch {
+                                try {
+                                    val parsed = com.moneymanager.data.ingestion.TransactionParser.parseSms(rawMessage) as? com.moneymanager.data.ingestion.ParsedTransaction.Expense
+                                    val fallbackMerchant = parsed?.merchant ?: txn.merchant ?: ""
+                                    val fallbackNote = parsed?.note ?: txn.note
+                                    val catResult = categorizationEngine.predictCategory(
+                                        rawMessage = rawMessage,
+                                        source = com.moneymanager.data.ingestion.TransactionSource.SMS,
+                                        amount = txn.amount,
+                                        fallbackMerchant = fallbackMerchant,
+                                        fallbackNote = fallbackNote,
+                                        date = txn.date,
+                                    )
+                                    if (catResult.finalCategoryId != txn.categoryId || catResult.predictedMerchant != txn.merchant) {
+                                        transactionRepository.updateUnapprovedPrediction(
+                                            id = txn.id,
+                                            categoryId = catResult.finalCategoryId,
+                                            merchant = catResult.predictedMerchant,
+                                            note = catResult.predictedNote.takeIf { it.isNotBlank() },
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.w("TransactionsVM", "Foreground categorization failed for ${txn.id}", e)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         val uiState: StateFlow<HomeUiState> =
             combine(
@@ -84,16 +139,19 @@ class TransactionsViewModel
                                             categoryName = categoryNames[t.categoryId] ?: "Unknown",
                                             accountName = accountNames[t.accountId] ?: "Unknown",
                                             note = t.note,
+                                            merchant = t.merchant,
                                         )
                                     },
                             )
                         }
 
+                val monthTotal =
+                    monthTransactions.fold(BigDecimal.ZERO) { acc, t -> acc + t.amount }
+
                 HomeUiState(
                     loading = false,
                     month = month,
-                    monthTotal =
-                        monthTransactions.fold(BigDecimal.ZERO) { acc, t -> acc + t.amount },
+                    monthTotal = monthTotal,
                     unapprovedCount = unapprovedCount,
                     sections = sections,
                 )
@@ -103,7 +161,15 @@ class TransactionsViewModel
                 initialValue = HomeUiState(),
             )
 
-        fun previousMonth() = selectedMonth.update { it.minusMonths(1) }
+        fun selectMonth(month: YearMonth) {
+            selectedMonth.value = month
+        }
 
-        fun nextMonth() = selectedMonth.update { it.plusMonths(1) }
+        fun previousMonth() {
+            selectedMonth.value = selectedMonth.value.minusMonths(1)
+        }
+
+        fun nextMonth() {
+            selectedMonth.value = selectedMonth.value.plusMonths(1)
+        }
     }

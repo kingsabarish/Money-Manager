@@ -38,6 +38,7 @@ class SettingsRepositoryImpl
                         prefs[KEY_BACKUP_FREQUENCY]
                             ?.let { runCatching { BackupFrequency.valueOf(it) }.getOrNull() }
                             ?: BackupFrequency.MANUAL,
+                    geminiApiKey = prefs[KEY_GEMINI_API_KEY],
                 )
             }
 
@@ -65,11 +66,22 @@ class SettingsRepositoryImpl
             dataStore.edit { it[KEY_BACKUP_FREQUENCY] = frequency.name }
         }
 
+        override suspend fun setGeminiApiKey(apiKey: String?) {
+            dataStore.edit {
+                if (apiKey.isNullOrBlank()) {
+                    it.remove(KEY_GEMINI_API_KEY)
+                } else {
+                    it[KEY_GEMINI_API_KEY] = apiKey.trim()
+                }
+            }
+        }
+
         private companion object {
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
             val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
             val KEY_SEED_COLOR = intPreferencesKey("seed_color")
             val KEY_LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
             val KEY_BACKUP_FREQUENCY = stringPreferencesKey("backup_frequency")
+            val KEY_GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
         }
     }

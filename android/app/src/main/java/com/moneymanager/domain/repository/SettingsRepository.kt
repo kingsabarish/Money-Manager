@@ -24,4 +24,7 @@ interface SettingsRepository {
 
     /** Choose how often the app backs up to Google Drive in the background. */
     suspend fun setBackupFrequency(frequency: BackupFrequency)
+
+    /** Set or clear the user-provided Gemini API key for cloud categorization. */
+    suspend fun setGeminiApiKey(apiKey: String?)
 }

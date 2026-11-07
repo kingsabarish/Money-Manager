@@ -46,6 +46,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -141,6 +142,7 @@ fun SettingsScreen(
         onDriveDelete = { showDeleteConfirm = true },
         selectedFrequency = state.backupFrequency,
         onFrequencyChange = viewModel::setBackupFrequency,
+        onGeminiApiKeyChange = viewModel::onGeminiApiKeyChange,
     )
 
     if (showDeleteConfirm) {
@@ -191,6 +193,7 @@ private fun SettingsScreenContent(
     onDriveDelete: () -> Unit,
     selectedFrequency: BackupFrequency,
     onFrequencyChange: (BackupFrequency) -> Unit,
+    onGeminiApiKeyChange: (String) -> Unit,
 ) {
     Scaffold(
         contentWindowInsets =
@@ -227,7 +230,10 @@ private fun SettingsScreenContent(
 
             HorizontalDivider()
 
-            AutoCaptureSection(state = state)
+            AutoCaptureSection(
+                state = state,
+                onGeminiApiKeyChange = onGeminiApiKeyChange,
+            )
 
             HorizontalDivider()
 
@@ -356,7 +362,10 @@ private fun ManageSection(onManage: () -> Unit) {
 }
 
 @Composable
-private fun AutoCaptureSection(state: SettingsUiState) {
+private fun AutoCaptureSection(
+    state: SettingsUiState,
+    onGeminiApiKeyChange: (String) -> Unit,
+) {
     val context = LocalContext.current
     var hasSmsPermission by remember {
         mutableStateOf(
@@ -497,54 +506,124 @@ private fun AutoCaptureSection(state: SettingsUiState) {
                 }
             }
         }
-        // AI Smart Categorization Status
-        if (!state.isAiCoreChecking) {
-            if (state.isAiCoreSupported) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        // AI Smart Categorization (Cloud Gemini)
+        var showApiKeyDialog by remember { mutableStateOf(false) }
+        val hasApiKey = !state.geminiApiKey.isNullOrBlank()
+
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color =
+                if (hasApiKey) {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                } else {
+                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("AI Smart Categorization", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "Active (Gemini Nano on-device)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("AI Smart Categorization", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            if (hasApiKey) {
+                                "Active (Gemini 2.5 Flash)"
+                            } else {
+                                "API key required for AI categorization"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color =
+                                if (hasApiKey) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
+                        )
+                    }
+                    Button(onClick = { showApiKeyDialog = true }) {
+                        Text(if (hasApiKey) "Change Key" else "Set Key")
                     }
                 }
-            } else {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "AI Smart Categorization",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                            Text(
-                                text = "Smart AI categorization is not supported on this device. Captured expenses will be categorized as Other -> General with empty notes.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                            )
-                        }
-                    }
+
+                if (hasApiKey) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Key configured: ••••••••${state.geminiApiKey.takeLast(4)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Without an API key, expenses default to 'Other / General'. Get a free API key at aistudio.google.com.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
+        }
+
+        if (showApiKeyDialog) {
+            var tempKey by remember { mutableStateOf(state.geminiApiKey.orEmpty()) }
+            AlertDialog(
+                onDismissRequest = { showApiKeyDialog = false },
+                title = { Text("Gemini API Key") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Provide your Google AI Studio API key to enable intelligent cloud categorization in both background and foreground.",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        OutlinedTextField(
+                            value = tempKey,
+                            onValueChange = { tempKey = it },
+                            label = { Text("API Key") },
+                            placeholder = { Text("AIzaSy...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        TextButton(
+                            onClick = {
+                                val browserIntent =
+                                    Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/app/apikey"))
+                                context.startActivity(browserIntent)
+                            },
+                        ) {
+                            Text("Get free API key from Google AI Studio ↗")
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            onGeminiApiKeyChange(tempKey)
+                            showApiKeyDialog = false
+                        },
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    Row {
+                        if (hasApiKey) {
+                            TextButton(
+                                onClick = {
+                                    onGeminiApiKeyChange("")
+                                    showApiKeyDialog = false
+                                },
+                            ) {
+                                Text("Remove", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        TextButton(onClick = { showApiKeyDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                },
+            )
         }
     }
 }
@@ -866,6 +945,7 @@ private fun SettingsScreenPreview() {
             onDriveDelete = {},
             selectedFrequency = BackupFrequency.MANUAL,
             onFrequencyChange = {},
+            onGeminiApiKeyChange = {},
         )
     }
 }

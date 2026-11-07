@@ -59,6 +59,7 @@ data class SettingsUiState(
     val driveRestoreOptions: List<BackupEntry>? = null,
     val isAiCoreSupported: Boolean = false,
     val isAiCoreChecking: Boolean = true,
+    val geminiApiKey: String? = null,
 )
 
 private data class AiStatus(
@@ -118,6 +119,7 @@ class SettingsViewModel
                     driveRestoreOptions = restoreOptions,
                     isAiCoreSupported = ai.isSupported,
                     isAiCoreChecking = ai.isChecking,
+                    geminiApiKey = settings.geminiApiKey,
                 )
             }.stateIn(
                 scope = viewModelScope,
@@ -135,6 +137,12 @@ class SettingsViewModel
 
         fun onDynamicColorChange(enabled: Boolean) {
             viewModelScope.launch { settingsRepository.setDynamicColor(enabled) }
+        }
+
+        fun onGeminiApiKeyChange(apiKey: String) {
+            viewModelScope.launch {
+                settingsRepository.setGeminiApiKey(apiKey)
+            }
         }
 
         /** Persist the chosen backup frequency and (re)schedule the periodic job. */

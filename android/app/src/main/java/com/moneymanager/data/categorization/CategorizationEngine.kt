@@ -6,6 +6,13 @@ import com.moneymanager.data.local.dao.CategoryDao
 import com.moneymanager.data.local.dao.TransactionDao
 import com.moneymanager.data.local.entity.CategoryEntity
 import com.moneymanager.domain.model.TransactionType
+import com.moneymanager.domain.repository.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalTime
@@ -18,6 +25,7 @@ data class CategorizationResult(
     val finalCategoryId: Long,
     val predictedNote: String,
     val predictedMerchant: String,
+    val categorizationNotes: String? = null,
     val confidence: Float = 1.0f,
 )
 
@@ -25,9 +33,10 @@ data class CategorizationResult(
 class CategorizationEngine @Inject constructor(
     private val categoryDao: CategoryDao,
     private val transactionDao: TransactionDao,
-    private val queryExecutor: TransactionHistoryQueryExecutor,
-    private val aiCoreManager: AiCoreManager,
+    private val settingsRepository: SettingsRepository,
+    private val cloudGeminiClient: CloudGeminiClient,
 ) {
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     /**
      * Cleans a category name by removing emojis, punctuation, and non-alphanumerics.
      */
@@ -35,17 +44,24 @@ class CategorizationEngine @Inject constructor(
         name.lowercase().replace(Regex("""[^a-z0-9\s/]"""), "").trim()
 
     /**
-     * Checks if AICore on-device Gemini Nano is available on this device.
+     * Checks if Gemini Cloud AI is configured with a valid API key.
      */
-    suspend fun isAiCoreSupported(): Boolean = aiCoreManager.isAiCoreSupported()
+    suspend fun isAiConfigured(): Boolean {
+        val apiKey = settingsRepository.observe().first().geminiApiKey
+        return !apiKey.isNullOrBlank()
+    }
+
+    /** Backward compatibility alias */
+    suspend fun isAiCoreSupported(): Boolean = isAiConfigured()
 
     /**
-     * Predicts the category, subcategory, note, and merchant using an on-device ReAct tool-calling agent flow.
-     * Turn 1: Gemini Nano generates a read-only SQLite SELECT query to retrieve relevant historical transactions.
-     * Tool: The app executes the query against `v_transaction_history` with strict read-only/LIMIT safety constraints.
-     * Turn 2: Gemini Nano receives the query output and classifies the transaction into Category/Subcategory/Note/Merchant.
+     * Predicts the category, subcategory, user note, merchant, and AI categorization notes
+     * using Cloud Gemini API (e.g. Gemini 2.5 Flash).
      *
-     * On unsupported devices or if inference fails, falls back to "Other" -> "General" with an empty note.
+     * It supplies the full 1.5-year historical transaction dataset formatted as TSV,
+     * the category hierarchy tree, and the current transaction context in a single call.
+     *
+     * If unconfigured or if the request fails, it defaults to "Other" -> "General" with an empty note.
      */
     suspend fun predictCategory(
         rawMessage: String,
@@ -70,6 +86,7 @@ class CategorizationEngine @Inject constructor(
                 finalCategoryId = subId,
                 predictedNote = "",
                 predictedMerchant = fallbackMerchant,
+                categorizationNotes = null,
                 confidence = 0f,
             )
         }
@@ -80,112 +97,51 @@ class CategorizationEngine @Inject constructor(
             clean == "other" || clean == "others"
         } ?: topCategories.first()
 
-        // 1. Verify AICore availability
-        val isSupported = aiCoreManager.isAiCoreSupported()
-        if (!isSupported) {
-            Log.i("CategorizationEngine", "AICore not available on this device; defaulting to Other -> General with empty note")
+        val apiKey = settingsRepository.observe().first().geminiApiKey
+        if (apiKey.isNullOrBlank()) {
+            Log.i("CategorizationEngine", "Gemini API key is not configured; defaulting to Other -> General with empty note")
             return fallbackResult(otherCategory, allCategories, fallbackMerchant)
         }
 
-        // 2. ReAct Agent Flow
         try {
-            // Turn 1: Ask Gemini Nano to write a read-only SQLite SELECT query
-            val queryPrompt = buildQueryGenerationPrompt(rawMessage, source, amount)
-            Log.d("CategorizationEngine", "Sending Turn 1 Query Prompt to Gemini Nano:\n$queryPrompt")
-            val rawQueryResponse = aiCoreManager.generateContent(queryPrompt)
-            Log.i("CategorizationEngine", "Gemini Nano Turn 1 Query Response:\n$rawQueryResponse")
+            // Retrieve 1.5 years (548 days) of historical approved transactions
+            val sinceDate = date.minusDays(548)
+            val historyRecords = transactionDao.getHistorySince(sinceDate)
+            Log.d("CategorizationEngine", "Retrieved ${historyRecords.size} history records since $sinceDate for Cloud Gemini context")
 
-            val parsedQuery = parseQueryResponse(rawQueryResponse)
-            Log.d("CategorizationEngine", "Parsed query from agent: $parsedQuery")
-
-            // Tool Execution: Query SQLite history (with 75 limit and fallback)
-            val historyResult = queryExecutor.executeQuery(parsedQuery, limit = 75)
-            Log.d("CategorizationEngine", "Tool output: returned ${historyResult.records.size} rows (wasFallback=${historyResult.wasFallback})")
-
-            // Turn 2: Feed tool output to Gemini Nano for final classification
-            val classifyPrompt = buildClassificationPrompt(
+            val prompt = buildClassificationPrompt(
                 rawMessage = rawMessage,
                 source = source,
                 amount = amount,
                 allCategories = allCategories,
-                historyResult = historyResult,
+                historyRecords = historyRecords,
                 time = time,
             )
-            Log.d("CategorizationEngine", "Sending Turn 2 Classification Prompt to Gemini Nano:\n$classifyPrompt")
-            val rawClassifyResponse = aiCoreManager.generateContent(classifyPrompt)
-            Log.i("CategorizationEngine", "Gemini Nano Turn 2 Response:\n$rawClassifyResponse")
 
-            val prediction = parseClassificationResponse(rawClassifyResponse)
-            if (prediction != null) {
-                return resolvePrediction(prediction, allCategories, fallbackMerchant, otherCategory, time)
+            Log.d("CategorizationEngine", "Sending classification request to Cloud Gemini...")
+            try {
+                java.io.File("/data/data/com.moneymanager/cache/last_gemini_prompt.txt").writeText(prompt)
+            } catch (_: Throwable) {}
+            val result = cloudGeminiClient.generateContent(
+                apiKey = apiKey,
+                prompt = prompt,
+                systemInstruction = "You are an expert personal finance categorization agent for Money Manager. Output strict JSON only.",
+            )
+
+            result.onSuccess { rawResponse ->
+                Log.i("CategorizationEngine", "Cloud Gemini Response:\n$rawResponse")
+                val prediction = parseClassificationResponse(rawResponse)
+                if (prediction != null) {
+                    return resolvePrediction(prediction, allCategories, fallbackMerchant, otherCategory, time)
+                }
+            }.onFailure { err ->
+                Log.e("CategorizationEngine", "Cloud Gemini call failed", err)
             }
         } catch (e: Throwable) {
-            Log.e("CategorizationEngine", "Agentic categorization failed, falling back to Other -> General", e)
+            Log.e("CategorizationEngine", "Categorization failed, defaulting to Other -> General", e)
         }
 
         return fallbackResult(otherCategory, allCategories, fallbackMerchant)
-    }
-
-    private fun buildQueryGenerationPrompt(
-        rawMessage: String,
-        source: TransactionSource,
-        amount: BigDecimal,
-    ): String {
-        val sourceDesc = when (source) {
-            TransactionSource.SMS -> "Bank SMS"
-            TransactionSource.GPAY_SPLIT -> "Google Pay"
-        }
-
-        return """
-        You are an on-device personal finance agent for Money Manager.
-        Your task is to analyze an incoming expense message and write a read-only SQLite SELECT query to retrieve relevant historical transactions to help categorize it.
-
-        Sources Guide:
-        1. Bank SMS: Typically contains patterns like "debited at <Merchant> for <Purpose>", "transferred to <UPI_VPA>", or "used at <Store>". Identify potential vendor names or keywords.
-        2. Google Pay: Typically formatted as "<Group/Merchant> - <Description>" (e.g., "Food - for-eggs", "Tea Stall - snacks") or "Paid ₹... to <Merchant>".
-
-        Incoming Transaction:
-        - Source: $sourceDesc
-        - Message: "$rawMessage"
-        - Amount: ₹${amount.toPlainString()}
-
-        Available Read-Only Database View:
-        v_transaction_history (
-            date TEXT,           -- ISO date 'YYYY-MM-DD'
-            amount TEXT,         -- Decimal amount in INR
-            merchant TEXT,       -- Clean merchant/payee name
-            note TEXT,           -- Transaction description
-            category TEXT,       -- Top-level category
-            subcategory TEXT     -- Subcategory name
-        )
-
-        Sample Records:
-        - 2026-10-25 | ₹320.00 | Swiggy | Dinner | 🍜 Food | Dinner
-        - 2026-10-20 | ₹210.00 | Uber | Cab to office | 🚖 Travel | Cab / Auto
-
-        Instructions:
-        Write a single SQLite SELECT query to find past transactions matching the merchant, keywords, or similar expenses.
-        - Must ONLY be a SELECT query.
-        - Use columns: merchant, amount, category, subcategory, note.
-        - In WHERE clause, search by merchant or note keywords (e.g. WHERE merchant LIKE '%swiggy%' OR note LIKE '%dinner%').
-        - Do NOT filter by amount or include currency symbols (amount in the view is a plain decimal string, and past orders for the same merchant typically have different amounts).
-        - Max limit is 75 rows.
-
-        Output strict JSON:
-        {"query": "SELECT merchant, amount, category, subcategory, note FROM v_transaction_history WHERE ... LIMIT 75"}
-        """.trimIndent()
-    }
-
-    private fun parseQueryResponse(rawResponse: String): String? {
-        val trimmed = rawResponse.trim()
-        val match = Regex(""""query"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)
-        if (match != null) {
-            return match.groupValues[1].replace("\\\"", "\"").trim()
-        }
-        if (trimmed.startsWith("SELECT", ignoreCase = true)) {
-            return trimmed
-        }
-        return null
     }
 
     private fun buildClassificationPrompt(
@@ -193,7 +149,7 @@ class CategorizationEngine @Inject constructor(
         source: TransactionSource,
         amount: BigDecimal,
         allCategories: List<CategoryEntity>,
-        historyResult: HistoryQueryResult,
+        historyRecords: List<com.moneymanager.data.local.dao.TransactionHistoryRecord>,
         time: LocalTime? = null,
     ): String {
         val topCategories = allCategories.filter { it.parentId == null }
@@ -207,24 +163,21 @@ class CategorizationEngine @Inject constructor(
             "- ${top.name}: $childNames"
         }
 
-        val historyHeader = if (historyResult.wasFallback) {
-            "Retrieved Historical Records (Tool Output - Note: No matching historical records found for your search query. The following 75 records are the user's most recent general transactions for reference):"
-        } else {
-            "Retrieved Historical Records (Tool Output - Matches found):"
-        }
-
-        val formattedRecords = if (historyResult.records.isNotEmpty()) {
-            historyResult.records.take(75).joinToString("\n") { r ->
-                val catDisplay = if (r.subcategory.isNotBlank() && !r.subcategory.equals("General", ignoreCase = true)) {
-                    "${r.category} > ${r.subcategory}"
-                } else {
-                    r.category
+        val tsvHistory = if (historyRecords.isNotEmpty()) {
+            buildString {
+                appendLine("Date\tAmount\tMerchant\tCategory\tSubcategory\tNote\tAI_Notes")
+                for (r in historyRecords) {
+                    append(r.date).append('\t')
+                    append("₹").append(r.amount).append('\t')
+                    append(r.merchant).append('\t')
+                    append(r.category).append('\t')
+                    append(r.subcategory).append('\t')
+                    append(r.note).append('\t')
+                    appendLine(r.categorizationNotes.orEmpty())
                 }
-                val noteDisplay = if (r.note.isNotBlank()) ": ${r.note}" else ""
-                "- \"${r.merchant.ifBlank { "Unknown" }}\" (₹${r.amount.toPlainString()}) -> $catDisplay$noteDisplay"
             }
         } else {
-            "- No prior records available."
+            "(No historical transactions available)"
         }
 
         val sourceDesc = when (source) {
@@ -244,30 +197,37 @@ class CategorizationEngine @Inject constructor(
         } ?: "Unknown"
 
         return """
-        You are an on-device personal finance assistant for Money Manager.
-        Classify this expense transaction into the best Category and Subcategory, extract the clean Merchant name, and write a concise, clean Note.
+        Analyze the incoming expense transaction and classify it accurately using the allowed category hierarchy and historical patterns.
 
-        Transaction to Classify:
+        Incoming Transaction:
         - Source: $sourceDesc
-        - Message: "$rawMessage"
+        - Raw Message: "$rawMessage"
         - Amount: ₹${amount.toPlainString()}
         - Time of Day: $timeDesc
 
         Allowed Categories and Subcategories:
         $categoryTree
 
-        $historyHeader
-        $formattedRecords
+        Past 1.5 Years Transaction History (TSV format):
+        $tsvHistory
 
-        Requirements:
-        1. "merchant": The clean, recognizable payee/merchant name (e.g. "Swiggy", "Uber", "Amazon").
-        2. "category": Must be one of the top-level categories listed above.
-        3. "subcategory": Must be a relevant subcategory for that category.
-           - For "🍜 Food", select the meal subcategory (Breakfast, Lunch, snacks, Dinner) based on the Time of Day above and the user's past historical patterns. For example, if transaction was in the morning, use "Breakfast"; if midday, use "Lunch"; if late afternoon, use "snacks"; if evening/night, use "Dinner".
-        4. "note": Follow the user's historical naming style closely! For example, if past notes for this merchant or meal type are simple keywords (e.g. "Dinner", "Lunch", "Breakfast", "Snacks"), use just that keyword ("Dinner") and do NOT include the merchant name or conjunctions (never write "Swiggy for Dinner" or "Swiggy Dinner"). Do NOT include card numbers, bank reference IDs, or OTPs.
+        Instructions & Constraints:
+        1. "merchant": The clean, recognizable payee/merchant/store name (e.g. "Swiggy", "Uber", "Amazon", "Apollo Pharmacy").
+        2. "category": Must be one of the top-level categories listed in the allowed categories tree.
+        3. "subcategory": Must be a valid subcategory for that category.
+           - For "🍜 Food", select the meal subcategory (Breakfast, Lunch, snacks, Dinner) based on the Time of Day above and the user's historical patterns.
+        4. "note": Follow the user's historical naming style closely (maximum 5 words!). Use concise descriptions (e.g. "Dinner", "Lunch", "Medicines", "Groceries", "Uber to airport"). Do NOT include merchant name or conjunctions (never write "Swiggy for Dinner"), and never include bank reference numbers, card numbers, or OTPs.
+        5. "categorizationNotes": Brief AI context or reasoning explaining why this category/subcategory was chosen to guide future predictions (maximum 15 words!). Keep it concise to save storage.
+        6. "Ground Truth Priority": In the Past History TSV, the Category, Subcategory, and Note are ground truth approved by the user. If an AI_Notes column conflicts with the Category/Subcategory, always prioritize the user's Category.
 
-        Output strict JSON ONLY:
-        {"merchant": "<Merchant>", "category": "<Category>", "subcategory": "<Subcategory>", "note": "<Note>"}
+        Output strict JSON ONLY in this exact format:
+        {
+          "merchant": "<Merchant>",
+          "category": "<Category>",
+          "subcategory": "<Subcategory>",
+          "note": "<Note>",
+          "categorizationNotes": "<AI Notes>"
+        }
         """.trimIndent()
     }
 
@@ -276,21 +236,52 @@ class CategorizationEngine @Inject constructor(
         val category: String,
         val subcategory: String,
         val note: String,
+        val categorizationNotes: String?,
     )
 
     private fun parseClassificationResponse(rawResponse: String): PredictionJson? {
         val trimmed = rawResponse.trim()
-        val merchant = Regex(""""merchant"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+
+        try {
+            val json = JSONObject(trimmed)
+            val cat = json.optString("category")
+            if (cat.isNotBlank()) {
+                val aiNotes = json.optString("categorizationNotes").ifBlank {
+                    json.optString("categorizedNotes").ifBlank {
+                        json.optString("aiNotes")
+                    }
+                }.trim().takeIf { it.isNotBlank() }
+
+                return PredictionJson(
+                    merchant = json.optString("merchant").trim(),
+                    category = cat.trim(),
+                    subcategory = json.optString("subcategory").trim(),
+                    note = json.optString("note").trim(),
+                    categorizationNotes = aiNotes,
+                )
+            }
+        } catch (_: Exception) {
+            // Fallback to regex if JSON formatting was slightly irregular
+        }
+
         val cat = Regex(""""category"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
+        if (cat.isNullOrBlank()) return null
+
+        val merchant = Regex(""""merchant"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
         val sub = Regex(""""subcategory"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
         val note = Regex(""""note"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
+        val aiNotes = Regex(""""(?:categorizationNotes|categorizedNotes|aiNotes)"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE).find(trimmed)?.groupValues?.get(1)?.trim()
 
-        if (cat.isNullOrBlank()) return null
         return PredictionJson(
             merchant = merchant.orEmpty(),
             category = cat,
             subcategory = sub.orEmpty(),
             note = note.orEmpty(),
+            categorizationNotes = aiNotes?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -389,6 +380,7 @@ class CategorizationEngine @Inject constructor(
             finalCategoryId = finalSubId,
             predictedNote = cleanNote,
             predictedMerchant = cleanMerchant,
+            categorizationNotes = prediction.categorizationNotes,
             confidence = 1.0f,
         )
     }
@@ -413,14 +405,132 @@ class CategorizationEngine @Inject constructor(
             finalCategoryId = subCatId,
             predictedNote = "",
             predictedMerchant = fallbackMerchant,
+            categorizationNotes = null,
             confidence = 0f,
         )
     }
 
-    /**
-     * In Gemini Nano on-device architecture, all saved and edited transactions
-     * in Room serve directly as training examples for subsequent inferences.
-     */
+    suspend fun generateCorrectionNotes(
+        merchant: String,
+        amount: BigDecimal,
+        date: LocalDate,
+        oldCategoryName: String,
+        oldSubcategoryName: String?,
+        oldNotes: String?,
+        newCategoryName: String,
+        newSubcategoryName: String?,
+        userNote: String?,
+    ): String? {
+        val apiKey = settingsRepository.observe().first().geminiApiKey
+        if (apiKey.isNullOrBlank()) {
+            return "User manually corrected to $newCategoryName - ${newSubcategoryName ?: "General"}."
+        }
+
+        val prompt = """
+        A user manually corrected a financial transaction that was previously classified.
+
+        Transaction Details:
+        - Merchant: $merchant
+        - Amount: ₹${amount.toPlainString()}
+        - Date: $date
+
+        Previous AI Classification:
+        - Category: $oldCategoryName -> ${oldSubcategoryName ?: "General"}
+        - Previous AI Notes: ${oldNotes ?: "None"}
+
+        User Correction (Ground Truth):
+        - Selected Category: $newCategoryName -> ${newSubcategoryName ?: "General"}
+        - User Note: ${userNote ?: "None"}
+
+        Task:
+        Provide a concise, updated AI reasoning note (maximum 15 words) explaining why this transaction belongs to "$newCategoryName -> ${newSubcategoryName ?: "General"}" based on the merchant and user correction, to guide future classifications.
+
+        Output strict JSON ONLY in this format:
+        {
+          "categorizationNotes": "<concise explanation, max 15 words>"
+        }
+        """.trimIndent()
+
+        Log.i("CategorizationEngine", "Correction Prompt:\n$prompt")
+        try {
+            java.io.File("/data/data/com.moneymanager/cache/last_correction_prompt.txt").writeText(prompt)
+        } catch (_: Throwable) {}
+
+        val result = cloudGeminiClient.generateContent(
+            apiKey = apiKey,
+            prompt = prompt,
+            systemInstruction = "You are an expert personal finance assistant updating categorization reasoning after user feedback. Output strict JSON only.",
+        )
+
+        result.onSuccess {
+            Log.i("CategorizationEngine", "Correction Response:\n$it")
+        }
+
+        return result.mapCatching { rawJson ->
+            val trimmed = rawJson.trim()
+                .removePrefix("```json")
+                .removePrefix("```")
+                .removeSuffix("```")
+                .trim()
+            try {
+                val json = JSONObject(trimmed)
+                val note = json.optString("categorizationNotes").ifBlank {
+                    json.optString("categorizedNotes").ifBlank {
+                        json.optString("aiNotes")
+                    }
+                }.trim()
+                if (note.isNotBlank()) return@mapCatching note
+            } catch (_: Throwable) {}
+
+            Regex(""""(?:categorizationNotes|categorizedNotes|aiNotes)"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+                .find(trimmed)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+        }.getOrNull() ?: "User manually corrected to $newCategoryName - ${newSubcategoryName ?: "General"}."
+    }
+
+    fun generateAndSaveCorrectionNotes(
+        transactionId: Long,
+        merchant: String,
+        amount: BigDecimal,
+        date: LocalDate,
+        originalCategoryId: Long,
+        newCategoryId: Long,
+        originalNotes: String?,
+        userNote: String?,
+    ) {
+        engineScope.launch {
+            try {
+                val origCat = categoryDao.getById(originalCategoryId)
+                val origTop = origCat?.parentId?.let { categoryDao.getById(it) } ?: origCat
+                val origSub = if (origCat?.parentId != null) origCat.name else "General"
+                val origTopName = origTop?.name ?: "Other"
+
+                val newCat = categoryDao.getById(newCategoryId)
+                val newTop = newCat?.parentId?.let { categoryDao.getById(it) } ?: newCat
+                val newSub = if (newCat?.parentId != null) newCat.name else "General"
+                val newTopName = newTop?.name ?: "Other"
+
+                val updatedNotes = generateCorrectionNotes(
+                    merchant = merchant,
+                    amount = amount,
+                    date = date,
+                    oldCategoryName = origTopName,
+                    oldSubcategoryName = origSub,
+                    oldNotes = originalNotes,
+                    newCategoryName = newTopName,
+                    newSubcategoryName = newSub,
+                    userNote = userNote,
+                )
+
+                if (!updatedNotes.isNullOrBlank()) {
+                    transactionDao.updateCategorizationNotes(transactionId, updatedNotes)
+                    Log.i("CategorizationEngine", "Updated transaction $transactionId categorizationNotes to: $updatedNotes")
+                }
+            } catch (e: Throwable) {
+                Log.w("CategorizationEngine", "Failed to generate correction notes for transaction $transactionId", e)
+            }
+        }
+    }
+
     suspend fun train(
         merchant: String,
         note: String?,
@@ -428,17 +538,13 @@ class CategorizationEngine @Inject constructor(
         date: LocalDate = LocalDate.now(),
         assignedCategoryId: Long,
     ) {
-        Log.d("CategorizationEngine", "Payee '$merchant' learned under category $assignedCategoryId for future prompts.")
+        // Transactions saved in Room automatically serve as history in future prompts
     }
 
-    suspend fun seedInitialWeights() {
-        // No-op in Gemini Nano on-device architecture
-    }
+    suspend fun seedInitialWeights() {}
 
     suspend fun seedFromTransactions(
         transactions: List<com.moneymanager.data.local.entity.TransactionEntity>,
         categories: List<CategoryEntity> = emptyList(),
-    ) {
-        // No-op in Gemini Nano on-device architecture
-    }
+    ) {}
 }

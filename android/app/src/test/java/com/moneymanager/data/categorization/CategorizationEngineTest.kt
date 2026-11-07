@@ -1,6 +1,5 @@
 package com.moneymanager.data.categorization
 
-import com.moneymanager.data.ingestion.TransactionParser
 import com.moneymanager.data.ingestion.TransactionSource
 import com.moneymanager.data.local.dao.CategoryDao
 import com.moneymanager.data.local.dao.TransactionDao
@@ -8,7 +7,13 @@ import com.moneymanager.data.local.entity.CategoryEntity
 import com.moneymanager.data.repository.FakeCategoryDao
 import com.moneymanager.data.repository.FakeTransactionDao
 import com.moneymanager.data.repository.InMemoryDb
+import com.moneymanager.domain.model.AppSettings
+import com.moneymanager.domain.model.BackupFrequency
+import com.moneymanager.domain.model.ThemeMode
 import com.moneymanager.domain.model.TransactionType
+import com.moneymanager.domain.repository.SettingsRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -16,38 +21,46 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.math.BigDecimal
+import java.time.LocalDate
 
-class FakeAiCoreManager(
-    var isSupported: Boolean = false,
-    var responses: MutableList<String> = mutableListOf(),
-) : AiCoreManager {
-    override suspend fun isAiCoreSupported(): Boolean = isSupported
-
+class FakeCloudGeminiClient(
+    var responses: MutableList<Result<String>> = mutableListOf(),
+) : CloudGeminiClient {
     val prompts = mutableListOf<String>()
+    var lastApiKey: String? = null
 
-    override suspend fun generateContent(prompt: String): String {
+    override suspend fun generateContent(
+        apiKey: String,
+        prompt: String,
+        systemInstruction: String?,
+    ): Result<String> {
+        lastApiKey = apiKey
         prompts.add(prompt)
-        return if (responses.isNotEmpty()) responses.removeAt(0) else ""
+        return if (responses.isNotEmpty()) responses.removeAt(0) else Result.failure(RuntimeException("No response"))
     }
 }
 
-class FakeTransactionHistoryQueryExecutor(
-    var result: HistoryQueryResult = HistoryQueryResult(records = emptyList(), wasFallback = true),
-) : TransactionHistoryQueryExecutor {
-    var lastExecutedQuery: String? = null
+class FakeSettingsRepository(
+    initialSettings: AppSettings = AppSettings(geminiApiKey = "test-api-key"),
+) : SettingsRepository {
+    private val flow = MutableStateFlow(initialSettings)
 
-    override suspend fun executeQuery(sql: String?, limit: Int): HistoryQueryResult {
-        lastExecutedQuery = sql
-        return result
-    }
+    override fun observe(): Flow<AppSettings> = flow
+    override suspend fun setThemeMode(mode: ThemeMode) { flow.value = flow.value.copy(themeMode = mode) }
+    override suspend fun setDynamicColor(enabled: Boolean) { flow.value = flow.value.copy(dynamicColor = enabled) }
+    override suspend fun setSeedColor(argb: Int) { flow.value = flow.value.copy(seedColorArgb = argb) }
+    override suspend fun setLastBackupAt(epochMs: Long) { flow.value = flow.value.copy(lastBackupAtEpochMs = epochMs) }
+    override suspend fun clearLastBackupAt() { flow.value = flow.value.copy(lastBackupAtEpochMs = null) }
+    override suspend fun setBackupFrequency(frequency: BackupFrequency) { flow.value = flow.value.copy(backupFrequency = frequency) }
+    override suspend fun setGeminiApiKey(apiKey: String?) { flow.value = flow.value.copy(geminiApiKey = apiKey) }
 }
 
 class CategorizationEngineTest {
     private lateinit var db: InMemoryDb
     private lateinit var categoryDao: CategoryDao
     private lateinit var transactionDao: TransactionDao
-    private lateinit var fakeQueryExecutor: FakeTransactionHistoryQueryExecutor
-    private lateinit var fakeAiCoreManager: FakeAiCoreManager
+    private lateinit var fakeGeminiClient: FakeCloudGeminiClient
+    private lateinit var fakeSettingsRepo: FakeSettingsRepository
     private lateinit var engine: CategorizationEngine
 
     private val foodId = 1L
@@ -64,13 +77,13 @@ class CategorizationEngineTest {
         db = InMemoryDb()
         categoryDao = FakeCategoryDao(db)
         transactionDao = FakeTransactionDao(db)
-        fakeQueryExecutor = FakeTransactionHistoryQueryExecutor()
-        fakeAiCoreManager = FakeAiCoreManager()
+        fakeGeminiClient = FakeCloudGeminiClient()
+        fakeSettingsRepo = FakeSettingsRepository()
         engine = CategorizationEngine(
             categoryDao = categoryDao,
             transactionDao = transactionDao,
-            queryExecutor = fakeQueryExecutor,
-            aiCoreManager = fakeAiCoreManager,
+            settingsRepository = fakeSettingsRepo,
+            cloudGeminiClient = fakeGeminiClient,
         )
 
         db.categories.value = listOf(
@@ -86,8 +99,8 @@ class CategorizationEngineTest {
     }
 
     @Test
-    fun `when AICore is unsupported, falls back to Other with General subcategory and empty note`() = runTest {
-        fakeAiCoreManager.isSupported = false
+    fun `when Gemini API key is missing, falls back to Other with General subcategory and empty note`() = runTest {
+        fakeSettingsRepo.setGeminiApiKey(null)
 
         val result = engine.predictCategory(
             rawMessage = "Rs 150.00 debited from A/c XX1234 at UnknownStore",
@@ -112,27 +125,35 @@ class CategorizationEngineTest {
     }
 
     @Test
-    fun `executes Turn 1 to get SQL query, executes tool, and passes result to Turn 2 for classification`() = runTest {
-        fakeAiCoreManager.isSupported = true
-        fakeAiCoreManager.responses = mutableListOf(
-            // Turn 1 Query Response
-            """{"query": "SELECT merchant, amount, category, subcategory, note FROM v_transaction_history WHERE merchant LIKE '%swiggy%' LIMIT 75"}""",
-            // Turn 2 Classification Response
-            """{"merchant": "Swiggy", "category": "Food", "subcategory": "Dinner", "note": "Dinner"}"""
+    fun `predicts category, merchant, note, and categorizationNotes using Cloud Gemini in single call`() = runTest {
+        // Pre-populate some historical transactions
+        db.transactions.value = listOf(
+            com.moneymanager.data.local.entity.TransactionEntity(
+                id = 101L,
+                type = TransactionType.EXPENSE,
+                date = LocalDate.now().minusDays(20),
+                amount = BigDecimal("350.00"),
+                categoryId = dinnerId,
+                accountId = 1L,
+                note = "Dinner",
+                isApproved = true,
+                merchant = "Swiggy",
+                categorizationNotes = "Late night order via Swiggy",
+            )
         )
 
-        fakeQueryExecutor.result = HistoryQueryResult(
-            records = listOf(
-                TransactionHistoryRecord(
-                    date = "2026-10-25",
-                    amount = BigDecimal("350.00"),
-                    merchant = "Swiggy",
-                    note = "Dinner",
-                    category = "Food",
-                    subcategory = "Dinner",
-                )
-            ),
-            wasFallback = false,
+        fakeGeminiClient.responses = mutableListOf(
+            Result.success(
+                """
+                {
+                  "merchant": "Swiggy",
+                  "category": "Food",
+                  "subcategory": "Dinner",
+                  "note": "Dinner",
+                  "categorizationNotes": "Food delivery app order matching past dinner transactions"
+                }
+                """.trimIndent()
+            )
         )
 
         val result = engine.predictCategory(
@@ -143,24 +164,36 @@ class CategorizationEngineTest {
             fallbackNote = null,
         )
 
-        assertEquals("SELECT merchant, amount, category, subcategory, note FROM v_transaction_history WHERE merchant LIKE '%swiggy%' LIMIT 75", fakeQueryExecutor.lastExecutedQuery)
         assertEquals(foodId, result.topCategoryId)
         assertEquals(dinnerId, result.subCategoryId)
         assertEquals(dinnerId, result.finalCategoryId)
         assertEquals("Swiggy", result.predictedMerchant)
         assertEquals("Dinner", result.predictedNote)
+        assertEquals("Food delivery app order matching past dinner transactions", result.categorizationNotes)
+        assertEquals(1.0f, result.confidence, 0.001f)
 
-        // Verify prompt 2 contains the tool output matches found
-        assertTrue(fakeAiCoreManager.prompts[1].contains("Retrieved Historical Records (Tool Output - Matches found):"))
-        assertTrue(fakeAiCoreManager.prompts[1].contains(""""Swiggy" (₹350.00) -> Food > Dinner: Dinner"""))
+        // Verify prompt included full 1.5 years TSV history and word limit instructions
+        val prompt = fakeGeminiClient.prompts.first()
+        assertTrue(prompt.contains("Past 1.5 Years Transaction History (TSV format):"))
+        assertTrue(prompt.contains("Late night order via Swiggy"))
+        assertTrue(prompt.contains("maximum 5 words!"))
+        assertTrue(prompt.contains("maximum 15 words!"))
     }
 
     @Test
-    fun `auto-creates new subcategory when Gemini Nano suggests an unmapped subcategory`() = runTest {
-        fakeAiCoreManager.isSupported = true
-        fakeAiCoreManager.responses = mutableListOf(
-            """{"query": "SELECT * FROM v_transaction_history WHERE merchant LIKE '%metro%' LIMIT 75"}""",
-            """{"merchant": "Metro", "category": "Travel", "subcategory": "Metro", "note": "Metro train ticket"}"""
+    fun `auto-creates new subcategory when Cloud Gemini suggests an unmapped subcategory`() = runTest {
+        fakeGeminiClient.responses = mutableListOf(
+            Result.success(
+                """
+                {
+                  "merchant": "Metro",
+                  "category": "Travel",
+                  "subcategory": "Metro",
+                  "note": "Metro train ticket",
+                  "categorizationNotes": "Subway transit commute"
+                }
+                """.trimIndent()
+            )
         )
 
         val result = engine.predictCategory(
@@ -176,6 +209,7 @@ class CategorizationEngineTest {
         assertEquals(result.subCategoryId, result.finalCategoryId)
         assertEquals("Metro train ticket", result.predictedNote)
         assertEquals("Metro", result.predictedMerchant)
+        assertEquals("Subway transit commute", result.categorizationNotes)
 
         // Ensure "Metro" subcategory was created in DB under Travel
         val createdSub = db.categories.value.firstOrNull { it.id == result.subCategoryId }
@@ -185,46 +219,10 @@ class CategorizationEngineTest {
     }
 
     @Test
-    fun `handles query tool fallback and explicitly informs Gemini when no matching query records exist`() = runTest {
-        fakeAiCoreManager.isSupported = true
-        fakeAiCoreManager.responses = mutableListOf(
-            """{"query": "SELECT * FROM v_transaction_history WHERE merchant LIKE '%nonexistent%'"}""",
-            """{"merchant": "NewStore", "category": "Other", "subcategory": "General", "note": "New store purchase"}"""
+    fun `gracefully falls back to Other and empty note when Cloud Gemini returns an error`() = runTest {
+        fakeGeminiClient.responses = mutableListOf(
+            Result.failure(RuntimeException("Network error / Timeout"))
         )
-
-        fakeQueryExecutor.result = HistoryQueryResult(
-            records = listOf(
-                TransactionHistoryRecord(
-                    date = "2026-10-30",
-                    amount = BigDecimal("1000.00"),
-                    merchant = "RecentStore",
-                    note = "General items",
-                    category = "Other",
-                    subcategory = "General",
-                )
-            ),
-            wasFallback = true,
-        )
-
-        val result = engine.predictCategory(
-            rawMessage = "Rs 500.00 debited at NewStore",
-            source = TransactionSource.SMS,
-            amount = BigDecimal("500.00"),
-            fallbackMerchant = "NewStore",
-        )
-
-        assertEquals(otherId, result.topCategoryId)
-        assertEquals("NewStore", result.predictedMerchant)
-
-        // Verify Turn 2 prompt notified Gemini about fallback records
-        val classifyPrompt = fakeAiCoreManager.prompts[1]
-        assertTrue(classifyPrompt.contains("No matching historical records found for your search query. The following 75 records are the user's most recent general transactions for reference"))
-    }
-
-    @Test
-    fun `gracefully falls back to Other and empty note when Gemini Nano throws an unexpected error`() = runTest {
-        fakeAiCoreManager.isSupported = true
-        fakeAiCoreManager.responses = mutableListOf("INVALID_NON_JSON")
 
         val result = engine.predictCategory(
             rawMessage = "Rs 500.00 debited at Shell",
@@ -238,5 +236,62 @@ class CategorizationEngineTest {
         assertNotNull(result.subCategoryId)
         assertEquals("", result.predictedNote)
         assertEquals("Shell", result.predictedMerchant)
+        assertEquals(0f, result.confidence, 0.001f)
+    }
+
+    @Test
+    fun `handles categorizedNotes and aiNotes aliases in Gemini JSON response`() = runTest {
+        fakeGeminiClient.responses = mutableListOf(
+            Result.success(
+                """
+                {
+                  "merchant": "Swiggy",
+                  "category": "Food",
+                  "subcategory": "Dinner",
+                  "note": "Dinner",
+                  "categorizedNotes": "Matched to dinner based on evening timing."
+                }
+                """.trimIndent()
+            )
+        )
+
+        val result = engine.predictCategory(
+            rawMessage = "Rs 350 debited at Swiggy",
+            source = TransactionSource.SMS,
+            amount = BigDecimal("350.00"),
+            fallbackMerchant = "Swiggy",
+            time = java.time.LocalTime.of(20, 0),
+        )
+
+        assertEquals(foodId, result.topCategoryId)
+        assertEquals(dinnerId, result.subCategoryId)
+        assertEquals("Matched to dinner based on evening timing.", result.categorizationNotes)
+    }
+
+    @Test
+    fun `generateCorrectionNotes queries Gemini and returns updated notes`() = runTest {
+        fakeGeminiClient.responses = mutableListOf(
+            Result.success(
+                """
+                {
+                  "categorizationNotes": "User corrected to Lunch based on midday meal."
+                }
+                """.trimIndent()
+            )
+        )
+
+        val note = engine.generateCorrectionNotes(
+            merchant = "Paytm",
+            amount = BigDecimal("440.00"),
+            date = LocalDate.now(),
+            oldCategoryName = "Food",
+            oldSubcategoryName = "Breakfast",
+            oldNotes = "Matched to breakfast",
+            newCategoryName = "Food",
+            newSubcategoryName = "Lunch",
+            userNote = "Lunch",
+        )
+
+        assertEquals("User corrected to Lunch based on midday meal.", note)
     }
 }

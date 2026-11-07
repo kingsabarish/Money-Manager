@@ -202,7 +202,6 @@ class TransactionNotificationListenerService : NotificationListenerService() {
                     android.util.Log.i("MoneyManager", "Resolved account: ${account.name} (id=${account.id})")
 
                     // 2. Resolve or predict Category, Subcategory, Note, and Payee via ReAct agent
-                    val isSupported = entryPoint.categorizationEngine().isAiCoreSupported()
                     val catResult =
                         entryPoint.categorizationEngine().predictCategory(
                             rawMessage = parsed.rawText,
@@ -210,12 +209,14 @@ class TransactionNotificationListenerService : NotificationListenerService() {
                             amount = parsed.amount,
                             fallbackMerchant = parsed.merchant,
                             fallbackNote = parsed.note,
+                            time = parsed.time ?: java.time.LocalTime.now(),
                             date = parsed.date,
                         )
                     val category = entryPoint.categoryDao().getById(catResult.finalCategoryId) ?: return@launch
                     val noteToSave = catResult.predictedNote.takeIf { it.isNotBlank() }
-                    val merchantToSave = if (catResult.confidence == 0f && isSupported) parsed.rawText else catResult.predictedMerchant
-                    android.util.Log.i("MoneyManager", "Resolved category: ${category.name} (id=${category.id}), merchant: $merchantToSave, note: $noteToSave")
+                    val merchantToSave = if (catResult.confidence == 0f) parsed.rawText else catResult.predictedMerchant
+                    val aiNotesToSave = catResult.categorizationNotes
+                    android.util.Log.i("MoneyManager", "Resolved category: ${category.name} (id=${category.id}), merchant: $merchantToSave, note: $noteToSave, aiNotes: $aiNotesToSave")
 
                     // 3. Prevent duplicate insertion if an identical transaction already exists
                     val roundedAmount = parsed.amount.setScale(2, java.math.RoundingMode.HALF_UP)
@@ -234,13 +235,14 @@ class TransactionNotificationListenerService : NotificationListenerService() {
                             accountId = account.id,
                             note = noteToSave,
                             merchant = merchantToSave,
+                            categorizationNotes = aiNotesToSave,
                         )
 
                     android.util.Log.i("MoneyManager", "Notification addAutoExpense result: $addResult")
 
                     // 5. Post notification
                     if (addResult is AppResult.Success) {
-                        val notifMerchant = if (catResult.confidence == 0f && isSupported) parsed.merchant else merchantToSave
+                        val notifMerchant = if (catResult.confidence == 0f) parsed.merchant else merchantToSave
                         entryPoint.notificationManager().showTransactionNotification(
                             transactionId = addResult.data.id,
                             amount = addResult.data.amount,

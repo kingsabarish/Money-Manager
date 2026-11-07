@@ -96,6 +96,7 @@ class TransactionsViewModel
                                             categoryId = catResult.finalCategoryId,
                                             merchant = catResult.predictedMerchant,
                                             note = catResult.predictedNote.takeIf { it.isNotBlank() },
+                                            categorizationNotes = catResult.categorizationNotes,
                                         )
                                     }
                                 } catch (e: Exception) {

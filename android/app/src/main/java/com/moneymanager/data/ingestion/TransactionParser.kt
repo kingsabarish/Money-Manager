@@ -3,6 +3,7 @@ package com.moneymanager.data.ingestion
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.util.regex.Pattern
 
@@ -20,6 +21,7 @@ sealed interface ParsedTransaction {
         val note: String?,
         val source: TransactionSource,
         val rawText: String,
+        val time: LocalTime? = null,
     ) : ParsedTransaction
 
     data object IgnoredIncome : ParsedTransaction
@@ -58,6 +60,46 @@ object TransactionParser {
     private val ACCOUNT_REF_PATTERN = Pattern.compile(
         """(?i)(?:(?:card|a/?c|acct|account)\s*(?:no\.?|ending|ending\s+with|number)?\s*[*xX-]*|block[a-z]*\s+)(\d{3,4})\b"""
     )
+
+    // Time extraction patterns
+    private val TIME_AT_PATTERN = Pattern.compile(
+        """(?i)\bat\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?"""
+    )
+    private val TIME_AM_PM_PATTERN = Pattern.compile(
+        """(?i)\b(\d{1,2}):(\d{2})\s*(am|pm)\b"""
+    )
+
+    fun extractTime(text: String): LocalTime? {
+        val atMatcher = TIME_AT_PATTERN.matcher(text)
+        if (atMatcher.find()) {
+            val h = atMatcher.group(1)?.toIntOrNull() ?: return null
+            val m = atMatcher.group(2)?.toIntOrNull() ?: return null
+            val amPm = atMatcher.group(3)?.lowercase()
+            val hour = when {
+                amPm == "pm" && h < 12 -> h + 12
+                amPm == "am" && h == 12 -> 0
+                else -> h
+            }
+            if (hour in 0..23 && m in 0..59) {
+                return LocalTime.of(hour, m)
+            }
+        }
+        val amPmMatcher = TIME_AM_PM_PATTERN.matcher(text)
+        if (amPmMatcher.find()) {
+            val h = amPmMatcher.group(1)?.toIntOrNull() ?: return null
+            val m = amPmMatcher.group(2)?.toIntOrNull() ?: return null
+            val amPm = amPmMatcher.group(3)?.lowercase()
+            val hour = when {
+                amPm == "pm" && h < 12 -> h + 12
+                amPm == "am" && h == 12 -> 0
+                else -> h
+            }
+            if (hour in 0..23 && m in 0..59) {
+                return LocalTime.of(hour, m)
+            }
+        }
+        return null
+    }
 
     // Merchant extraction patterns for bank SMS
     private val MERCHANT_AFTER_DATE_PATTERN = Pattern.compile(
@@ -157,6 +199,7 @@ object TransactionParser {
         val merchant = cleanMerchantName(rawMerchant) ?: rawMerchant?.takeIf { it.isNotBlank() } ?: "Transfer"
 
         val date = Instant.ofEpochMilli(timestampEpochMs).atZone(zoneId).toLocalDate()
+        val time = extractTime(clean) ?: Instant.ofEpochMilli(timestampEpochMs).atZone(zoneId).toLocalTime()
 
         return ParsedTransaction.Expense(
             amount = amount,
@@ -166,6 +209,7 @@ object TransactionParser {
             note = null,
             source = TransactionSource.SMS,
             rawText = clean,
+            time = time,
         )
     }
 
@@ -242,6 +286,7 @@ object TransactionParser {
 
             val requester = matchedRequester.removePrefix("to ").trim()
             val date = Instant.ofEpochMilli(timestampEpochMs).atZone(zoneId).toLocalDate()
+            val time = Instant.ofEpochMilli(timestampEpochMs).atZone(zoneId).toLocalTime()
 
             return ParsedTransaction.Expense(
                 amount = amount,
@@ -251,6 +296,7 @@ object TransactionParser {
                 note = finalNote,
                 source = TransactionSource.GPAY_SPLIT,
                 rawText = combined,
+                time = time,
             )
         }
 

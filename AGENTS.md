@@ -60,9 +60,10 @@ Persistence:
 
 - Room database on-device; amounts stored as **TEXT** (`BigDecimal` ↔ String
   converter — never REAL/Double), dates as ISO `yyyy-MM-dd`.
-- Database version is **3** (version 3 added internal `merchant TEXT` column via
-  `MIGRATION_2_3`). `merchant` is used strictly for internal ML payee/vendor
-  learning and is never shown in place of user notes in the UI.
+- Database version is **4** (version 4 added `categorizationNotes TEXT` column via
+  `MIGRATION_3_4`, version 3 added `merchant TEXT` via `MIGRATION_2_3`). `merchant`
+  stores clean vendor/payee data for account resolution, while `categorizationNotes`
+  records concise AI reasoning to guide future categorization without polluting user notes.
 - Room `exportSchema = true` writes schema JSON to `app/schemas/` (committed) so
   migrations are possible later.
 
@@ -74,59 +75,53 @@ Persistence:
     (including split requests like `Food - for-eggs`).
   - `TransactionParser` parses debit amount, account ref, and payee merchant/notes.
     Account numbers and raw reference strings are filtered out from the human note
-    via `isReasonableNote()`.
+    via `isReasonableNote()`. Explicit transaction timestamps (`at HH:mm`) are extracted
+    from message text to pass accurate meal times of day to the categorization engine.
   - **Incoming money & split settlements ignored**: Incoming transactions (e.g.
     GPay split settlements like `"You've received a payment"`,
     `"<Name> has paid you ₹..."`, `"Payment received"`, bank credits, refunds,
     cashback) are classified as `IgnoredIncome` and strictly excluded to avoid
     double-counting expenses already tracked when created.
-- **Categorization priority hierarchy** (`CategorizationEngine`):
-- **On-Device Gemini Nano ReAct Categorization** (`CategorizationEngine`, `AiCoreManager`):
-  - Supported devices (e.g. Snapdragon 8 Elite / OnePlus 13 on Android 16) run local
-    inference via Google AICore (`com.google.mlkit:genai-prompt`).
-  - **Settings Toggle**: Configurable in Settings (`Smart Categorization (Gemini Nano)`),
-    backed by `AppSettings.aiCoreCategorizationEnabled` in DataStore.
-  - **Two-Turn ReAct Agent Flow**:
-    - **Turn 1 (Query generation)**: Gemini Nano writes a read-only SQLite `SELECT`
-      query against `v_transaction_history` searching by payee or keywords.
-    - **Tool execution** (`TransactionHistoryQueryExecutor`): The app executes the query
-      with strict validation (SELECT only, forbidden tokens rejected, LIMIT capped at 75).
-      If no matches are found, it falls back to the user's 75 most recent transactions.
-    - **Turn 2 (Classification & synthesis)**: Nano receives the retrieved historical
-      records, allowed category hierarchy, and `Time of Day` context, then predicts:
+- **Cloud Gemini Categorization** (`CategorizationEngine`, `CloudGeminiClient`):
+  - Uses Google Cloud Gemini (e.g. Gemini 2.5 Flash) via direct REST API calls using
+    OkHttp with BYOK (Bring Your Own Key) architecture.
+  - **Settings Configuration**: Configured in Settings (`AI Smart Categorization`),
+    backed by `AppSettings.geminiApiKey` in DataStore. Direct link to Google AI Studio
+    (`aistudio.google.com/app/apikey`) provided in UI.
+  - **Single-Turn Historical Context & Synthesis**:
+    - The engine queries the full 1.5 years (~548 days) of approved historical transactions
+      from Room via `TransactionDao.getHistorySince()`, formatting them into a compact TSV
+      table (`Date \t Amount \t Merchant \t Category \t Subcategory \t Note \t AI_Notes`).
+    - Cloud Gemini receives the incoming transaction (source, message, amount, time of day),
+      allowed category hierarchy, and the complete 1.5-year TSV history.
+    - Cloud Gemini predicts in a single structured JSON turn:
       - `merchant`: clean recognizable payee/vendor name.
-      - `category` & `subcategory`: exact match from category tree. For `🍜 Food`,
+      - `category` & `subcategory`: exact match from category hierarchy tree. For `🍜 Food`,
         the meal subcategory (`Breakfast`: 05:00–11:30, `Lunch`: 11:30–16:00,
         `snacks`: 16:00–19:00, `Dinner`: 19:00–05:00) is assigned based on the
         transaction time of day and history.
-      - `note`: concise keyword matching user historical style (e.g. `"Lunch"`,
-        `"Dinner"`), never duplicating vendor name or conjunctions (never
-        `"Swiggy for Dinner"`).
-  - **Background Deferral & Foreground Execution**:
-    - Google AICore blocks background inference (`ErrorCode 30: BACKGROUND_USE_BLOCKED`).
-    - While the app is closed/backgrounded, transactions are saved with:
-      - `categoryId` = `Other` -> `General`
-      - `note` = `null` (strictly empty to prevent raw SMS leakage)
-      - `merchant` = `parsed.rawText` (storing the raw message internally)
-      - `isApproved` = `false`
-    - When the app enters the foreground, `TransactionsViewModel` and
-      `UnapprovedTransactionsViewModel` observe unapproved transactions with
-      `Other`/`General`, execute the Nano ReAct flow, and update the prediction
-      via `TransactionRepository.updateUnapprovedPrediction()` — preserving
-      `isApproved = false` for manual user approval.
-- **Categorization priority hierarchy (Fallback / Non-AI)** (`CategorizationEngine`):
-  - **Priority 1: Explicit Category in Group / Note (Highest)**: Direct name match
-    (ignoring emoji prefixes). Subcategories are checked strictly: explicit meal
-    keywords (`breakfast`, `lunch`, `dinner`, `snacks`) or transport keywords
-    assign a subcategory; generic food items (`egg`, `idly`, `dosa`, `biryani`)
-    remain at the top-level category (`Food`) with `subCategoryId = null`.
-  - **Priority 2: User Transaction History & Online Learned Weights (Medium)**:
-    Checks `category_ml_weights` for `merchant:` (friend bank account / UPI ID)
-    or confirmed tokens. Whenever a transaction is saved/edited (even with a blank
-    note), `EntryViewModel` trains the engine on the merchant payee.
-  - **Priority 3: Seeded Keyword Dictionary & Fallback Heuristics (Lowest)**:
-    Pre-seeded keywords from 1,980+ past transactions and business suffix heuristics
-    (`...foods`, `...bakes`, `...fuels`). Fallback to `Other` / `Others`.
+      - `note`: concise keyword matching user historical style (maximum 5 words, e.g. `"Dinner"`),
+        never duplicating vendor name or conjunctions (never `"Swiggy for Dinner"`).
+      - `categorizationNotes`: brief AI reasoning/hints to guide future predictions
+        (maximum 15 words) to avoid database bloat.
+  - **Correction Feedback Loop & Ground Truth**:
+    - When a user manually edits a transaction in `EntryScreen` and changes the category,
+      `EntryViewModel` invokes `CategorizationEngine.generateAndSaveCorrectionNotes()`,
+      sending a feedback turn to Gemini with original context, previous prediction, and the
+      user-selected ground truth.
+    - Gemini generates an updated reasoning note (maximum 15 words) that is saved into
+      `categorizationNotes`, ensuring future classifications remain aligned.
+    - Historical prompt context enforces "Ground Truth Priority": if historical AI notes ever
+      conflict with user category selections, the user category is strictly prioritized.
+  - **Foreground & Background Execution**:
+    - Runs in real-time immediately when bank SMS or GPay notifications arrive, without
+      waiting for the app to open.
+    - If the API call fails or no API key is provided, the engine strictly defaults to
+      `Other` -> `General` with empty note, `rawText` in `merchant`, and `isApproved = false`
+      (no fallback heuristic logic).
+    - If a transaction was saved while offline, foreground observers in `TransactionsViewModel`
+      and `UnapprovedTransactionsViewModel` can re-run categorization once network connectivity
+      is restored.
 - **Category consolidation**:
   - `cab`, `auto`, and `Rapido` are combined into **`Cab / Auto`**.
   - `Bus` is converted to **`Public Transport`**.

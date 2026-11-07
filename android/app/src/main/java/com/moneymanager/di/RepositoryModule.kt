@@ -2,6 +2,8 @@ package com.moneymanager.di
 
 import com.moneymanager.data.categorization.AiCoreManager
 import com.moneymanager.data.categorization.AiCoreManagerImpl
+import com.moneymanager.data.categorization.CloudGeminiClient
+import com.moneymanager.data.categorization.CloudGeminiClientImpl
 import com.moneymanager.data.categorization.TransactionHistoryQueryExecutor
 import com.moneymanager.data.categorization.TransactionHistoryQueryExecutorImpl
 import com.moneymanager.data.repository.AccountRepositoryImpl
@@ -51,4 +53,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindTransactionHistoryQueryExecutor(impl: TransactionHistoryQueryExecutorImpl): TransactionHistoryQueryExecutor
+
+    @Binds
+    @Singleton
+    abstract fun bindCloudGeminiClient(impl: CloudGeminiClientImpl): CloudGeminiClient
 }

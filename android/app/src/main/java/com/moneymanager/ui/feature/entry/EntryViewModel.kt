@@ -8,11 +8,13 @@ import com.moneymanager.domain.model.Account
 import com.moneymanager.domain.model.AppError
 import com.moneymanager.domain.model.AppResult
 import com.moneymanager.domain.model.Category
+import com.moneymanager.domain.model.Transaction
 import com.moneymanager.domain.repository.AccountRepository
 import com.moneymanager.domain.repository.CategoryRepository
 import com.moneymanager.domain.repository.TransactionRepository
 import com.moneymanager.ui.navigation.Entry
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -61,6 +63,7 @@ class EntryViewModel
         val uiState: StateFlow<EntryUiState> = _uiState.asStateFlow()
 
         private var editingMerchant: String? = null
+        private var originalTransaction: Transaction? = null
 
         init {
             if (editingId != null) {
@@ -68,6 +71,7 @@ class EntryViewModel
                     val result = transactionRepository.getById(editingId)
                     if (result is AppResult.Success) {
                         val t = result.data
+                        originalTransaction = t
                         editingMerchant = t.merchant
                         _uiState.update { state ->
                             state.copy(
@@ -169,6 +173,19 @@ class EntryViewModel
                         if (updateRes is AppResult.Success) {
                             notificationManager.cancelNotification(editingId.toInt())
                             val trainMerchant = editingMerchant ?: state.note.takeIf { it.isNotBlank() } ?: ""
+                            val origTxn = originalTransaction
+                            if (origTxn != null && origTxn.categoryId != categoryId) {
+                                categorizationEngine.generateAndSaveCorrectionNotes(
+                                    transactionId = editingId,
+                                    merchant = trainMerchant,
+                                    amount = amount,
+                                    date = state.date,
+                                    originalCategoryId = origTxn.categoryId,
+                                    newCategoryId = categoryId,
+                                    originalNotes = origTxn.categorizationNotes,
+                                    userNote = state.note.takeIf { it.isNotBlank() },
+                                )
+                            }
                             categorizationEngine.train(
                                 merchant = trainMerchant,
                                 note = state.note.takeIf { it.isNotBlank() },

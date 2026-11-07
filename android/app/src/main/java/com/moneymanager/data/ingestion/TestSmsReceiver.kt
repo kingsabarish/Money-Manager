@@ -77,8 +77,7 @@ class TestSmsReceiver : BroadcastReceiver() {
 
                 android.util.Log.i("MoneyManager", "Resolved account: ${account.name} (id=${account.id})")
 
-                // 2. Resolve or Predict Category, Subcategory, Note, and Payee via ReAct agent
-                val isSupported = entryPoint.categorizationEngine().isAiCoreSupported()
+                // 2. Resolve or Predict Category, Subcategory, Note, and Payee via Cloud Gemini
                 val catResult =
                     entryPoint.categorizationEngine().predictCategory(
                         rawMessage = parsed.rawText,
@@ -86,12 +85,14 @@ class TestSmsReceiver : BroadcastReceiver() {
                         amount = parsed.amount,
                         fallbackMerchant = parsed.merchant,
                         fallbackNote = parsed.note,
+                        time = parsed.time ?: java.time.LocalTime.now(),
                         date = parsed.date,
                     )
                 val category = entryPoint.categoryDao().getById(catResult.finalCategoryId) ?: return@launch
                 val noteToSave = catResult.predictedNote.takeIf { it.isNotBlank() }
-                val merchantToSave = if (catResult.confidence == 0f && isSupported) parsed.rawText else catResult.predictedMerchant
-                android.util.Log.i("MoneyManager", "Resolved category: ${category.name} (id=${category.id}), merchant: $merchantToSave, note: $noteToSave")
+                val merchantToSave = if (catResult.confidence == 0f) parsed.rawText else catResult.predictedMerchant
+                val aiNotesToSave = catResult.categorizationNotes
+                android.util.Log.i("MoneyManager", "Resolved category: ${category.name} (id=${category.id}), merchant: $merchantToSave, note: $noteToSave, aiNotes: $aiNotesToSave")
 
                 // 3. Save auto-detected expense with isApproved = false
                 val addResult =
@@ -102,12 +103,13 @@ class TestSmsReceiver : BroadcastReceiver() {
                         accountId = account.id,
                         note = noteToSave,
                         merchant = merchantToSave,
+                        categorizationNotes = aiNotesToSave,
                     )
                 android.util.Log.i("MoneyManager", "addAutoExpense result: $addResult")
 
                 // 4. Post interactive notification
                 if (addResult is AppResult.Success) {
-                    val notifMerchant = if (catResult.confidence == 0f && isSupported) parsed.merchant else merchantToSave
+                    val notifMerchant = if (catResult.confidence == 0f) parsed.merchant else merchantToSave
                     android.util.Log.i("MoneyManager", "Posting notification for transaction ${addResult.data.id}")
                     entryPoint.notificationManager().showTransactionNotification(
                         transactionId = addResult.data.id,

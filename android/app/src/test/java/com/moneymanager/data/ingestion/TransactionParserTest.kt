@@ -279,5 +279,18 @@ class TransactionParserTest {
         )
         assertEquals(ParsedTransaction.IgnoredIncome, r2)
     }
+
+    @Test
+    fun `extracts explicit time from bank SMS`() {
+        val sms = "A transaction of Rs. 440.00 was made using your HDFC Bank Pixel Play Credit Card at paytmqr6ys6z8@ptys via UPI 131882507983 on 26/10/26 at 13:58. Not you? Block your Card: https://1.hdfc.bank.in/HDFCBK/s/yokGpb41 or SMS BLOCKPCC 4884 to 8433642286"
+        val result = TransactionParser.parseSms(sms, timestamp, zone)
+
+        assertTrue(result is ParsedTransaction.Expense)
+        val expense = result as ParsedTransaction.Expense
+        assertEquals(BigDecimal("440.00"), expense.amount)
+        assertEquals("paytmqr6ys6z8", expense.merchant)
+        assertEquals("4884", expense.accountRef)
+        assertEquals(java.time.LocalTime.of(13, 58), expense.time)
+    }
 }
 

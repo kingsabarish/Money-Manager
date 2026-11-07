@@ -43,6 +43,9 @@ interface TransactionDao {
     @Query("UPDATE transactions SET isApproved = :approved WHERE id = :id")
     suspend fun setApproved(id: Long, approved: Boolean)
 
+    @Query("UPDATE transactions SET categorizationNotes = :notes WHERE id = :id")
+    suspend fun updateCategorizationNotes(id: Long, notes: String?)
+
     @Query("UPDATE transactions SET isApproved = 1 WHERE isApproved = 0")
     suspend fun approveAll()
 
@@ -69,4 +72,33 @@ interface TransactionDao {
 
     @Query("SELECT * FROM transactions WHERE merchant = :merchant AND isApproved = 1 ORDER BY date DESC, id DESC LIMIT :limit")
     suspend fun getApprovedByMerchant(merchant: String, limit: Int): List<TransactionEntity>
+
+    @Query(
+        """
+        SELECT 
+            t.date AS date,
+            t.amount AS amount,
+            COALESCE(t.merchant, '') AS merchant,
+            COALESCE(t.note, '') AS note,
+            COALESCE(p.name, c.name) AS category,
+            CASE WHEN p.name IS NOT NULL THEN c.name ELSE 'General' END AS subcategory,
+            t.categorizationNotes AS categorizationNotes
+        FROM transactions t
+        LEFT JOIN categories c ON t.categoryId = c.id
+        LEFT JOIN categories p ON c.parentId = p.id
+        WHERE t.isApproved = 1 AND t.date >= :sinceDate
+        ORDER BY t.date ASC, t.id ASC
+        """
+    )
+    suspend fun getHistorySince(sinceDate: java.time.LocalDate): List<TransactionHistoryRecord>
 }
+
+data class TransactionHistoryRecord(
+    val date: String,
+    val amount: String,
+    val merchant: String,
+    val note: String,
+    val category: String,
+    val subcategory: String,
+    val categorizationNotes: String?,
+)

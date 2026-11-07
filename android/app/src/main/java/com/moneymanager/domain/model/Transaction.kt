@@ -19,4 +19,5 @@ data class Transaction(
     val note: String?,
     val isApproved: Boolean = true,
     val merchant: String? = null,
+    val categorizationNotes: String? = null,
 )

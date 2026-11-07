@@ -74,13 +74,14 @@ class SmsTransactionReceiver : BroadcastReceiver() {
                         amount = parsed.amount,
                         fallbackMerchant = parsed.merchant,
                         fallbackNote = parsed.note,
+                        time = parsed.time ?: java.time.LocalTime.now(),
                         date = parsed.date,
                     )
-                val isSupported = entryPoint.categorizationEngine().isAiCoreSupported()
                 val category = entryPoint.categoryDao().getById(catResult.finalCategoryId) ?: return@launch
                 val noteToSave = catResult.predictedNote.takeIf { it.isNotBlank() }
-                val merchantToSave = if (catResult.confidence == 0f && isSupported) parsed.rawText else catResult.predictedMerchant
-                android.util.Log.i("MoneyManager", "SMS Resolved category: ${category.name} (id=${category.id}), merchant: $merchantToSave, note: $noteToSave")
+                val merchantToSave = if (catResult.confidence == 0f) parsed.rawText else catResult.predictedMerchant
+                val aiNotesToSave = catResult.categorizationNotes
+                android.util.Log.i("MoneyManager", "SMS Resolved category: ${category.name} (id=${category.id}), merchant: $merchantToSave, note: $noteToSave, aiNotes: $aiNotesToSave")
 
                 // 3. Save auto-detected expense with isApproved = false
                 val addResult =
@@ -91,13 +92,14 @@ class SmsTransactionReceiver : BroadcastReceiver() {
                         accountId = account.id,
                         note = noteToSave,
                         merchant = merchantToSave,
+                        categorizationNotes = aiNotesToSave,
                     )
 
                 android.util.Log.i("MoneyManager", "SMS addAutoExpense result: $addResult")
 
                 // 4. Post interactive notification
                 if (addResult is AppResult.Success) {
-                    val notifMerchant = if (catResult.confidence == 0f && isSupported) parsed.merchant else merchantToSave
+                    val notifMerchant = if (catResult.confidence == 0f) parsed.merchant else merchantToSave
                     android.util.Log.i("MoneyManager", "SMS Posting notification for ${addResult.data.id}")
                     entryPoint.notificationManager().showTransactionNotification(
                         transactionId = addResult.data.id,

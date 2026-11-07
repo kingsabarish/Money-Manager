@@ -33,6 +33,7 @@ object DatabaseModule {
             .addMigrations(
                 MoneyManagerDatabase.MIGRATION_1_2,
                 MoneyManagerDatabase.MIGRATION_2_3,
+                MoneyManagerDatabase.MIGRATION_3_4,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
@@ -50,9 +51,10 @@ object DatabaseModule {
             .build()
 
     private fun createTransactionHistoryView(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP VIEW IF EXISTS v_transaction_history")
         db.execSQL(
             """
-            CREATE VIEW IF NOT EXISTS v_transaction_history AS
+            CREATE VIEW v_transaction_history AS
             SELECT 
                 t.id AS id,
                 t.date AS date,
@@ -60,7 +62,8 @@ object DatabaseModule {
                 COALESCE(t.merchant, '') AS merchant,
                 COALESCE(t.note, '') AS note,
                 COALESCE(p.name, c.name) AS category,
-                CASE WHEN p.name IS NOT NULL THEN c.name ELSE 'General' END AS subcategory
+                CASE WHEN p.name IS NOT NULL THEN c.name ELSE 'General' END AS subcategory,
+                COALESCE(t.categorizationNotes, '') AS categorizationNotes
             FROM transactions t
             LEFT JOIN categories c ON t.categoryId = c.id
             LEFT JOIN categories p ON c.parentId = p.id

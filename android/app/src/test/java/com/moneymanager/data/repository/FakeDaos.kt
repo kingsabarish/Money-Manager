@@ -181,6 +181,12 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
         }
     }
 
+    override suspend fun updateCategorizationNotes(id: Long, notes: String?) {
+        db.transactions.value = db.transactions.value.map {
+            if (it.id == id) it.copy(categorizationNotes = notes) else it
+        }
+    }
+
     override suspend fun approveAll() {
         db.transactions.value = db.transactions.value.map { it.copy(isApproved = true) }
     }
@@ -233,4 +239,24 @@ class FakeTransactionDao(private val db: InMemoryDb) : TransactionDao {
             .filter { it.isApproved && it.merchant == merchant }
             .sortedWith(compareByDescending<TransactionEntity> { it.date }.thenByDescending { it.id })
             .take(limit)
+
+    override suspend fun getHistorySince(sinceDate: java.time.LocalDate): List<com.moneymanager.data.local.dao.TransactionHistoryRecord> =
+        db.transactions.value
+            .filter { it.isApproved && !it.date.isBefore(sinceDate) }
+            .sortedWith(compareBy<TransactionEntity> { it.date }.thenBy { it.id })
+            .map { t ->
+                val cat = db.categories.value.firstOrNull { it.id == t.categoryId }
+                val parentCat = cat?.parentId?.let { pId -> db.categories.value.firstOrNull { it.id == pId } }
+                val topName = parentCat?.name ?: cat?.name ?: "Other"
+                val subName = if (parentCat != null) cat.name else "General"
+                com.moneymanager.data.local.dao.TransactionHistoryRecord(
+                    date = t.date.toString(),
+                    amount = t.amount.toPlainString(),
+                    merchant = t.merchant.orEmpty(),
+                    note = t.note.orEmpty(),
+                    category = topName,
+                    subcategory = subName,
+                    categorizationNotes = t.categorizationNotes,
+                )
+            }
 }

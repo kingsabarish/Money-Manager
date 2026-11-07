@@ -51,6 +51,7 @@ object SnapshotCodec {
                         note = it.note,
                         isApproved = it.isApproved,
                         merchant = it.merchant,
+                        categorizationNotes = it.categorizationNotes,
                     )
                 },
         )
@@ -120,6 +121,7 @@ object SnapshotCodec {
                 note = it.note,
                 isApproved = it.isApproved,
                 merchant = it.merchant,
+                categorizationNotes = it.categorizationNotes,
             )
         }
     }
